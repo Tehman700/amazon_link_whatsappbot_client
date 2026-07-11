@@ -1,6 +1,9 @@
 import type { Marketplace, ProcessResponse, User } from "./types";
 
-const BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+// Dev: talk to the local FastAPI directly. Prod: same-origin /api/* path,
+// rewritten to the API deployment by vercel.json — no CORS, no env vars.
+const BASE =
+  import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? "http://localhost:8000" : "/api");
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(BASE + path, {
