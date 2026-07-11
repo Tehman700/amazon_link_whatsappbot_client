@@ -59,12 +59,28 @@ function extractText(message) {
   );
 }
 
+// IDs of messages this adapter sent — used to stop the bot's own replies in
+// the self-chat from being processed again (infinite loop guard).
+const sentIds = new Set();
+
+function ownJid() {
+  const id = sock?.user?.id ?? "";
+  return id ? id.split(":")[0] + "@s.whatsapp.net" : "";
+}
+
 async function handleMessage(msg) {
-  if (!msg.message || msg.key.fromMe) return;
+  if (!msg.message) return;
 
   const jid = msg.key.remoteJid ?? "";
   // Direct chats only — ignore groups, broadcast, status.
   if (!jid.endsWith("@s.whatsapp.net")) return;
+
+  // Outgoing messages are ignored, EXCEPT in the account's "Message
+  // Yourself" chat, where they enable solo testing by the bot's owner.
+  if (msg.key.fromMe) {
+    if (jid !== ownJid()) return;
+    if (sentIds.has(msg.key.id)) return; // our own reply — don't loop
+  }
 
   const sender = "+" + jid.split("@")[0];
   const text = extractText(msg.message);
@@ -92,14 +108,19 @@ async function handleMessage(msg) {
   if (!result.links_replaced) return; // nothing rewritten — stay silent
 
   const hasImage = Boolean(unwrap(msg.message)?.imageMessage);
+  let sent;
   if (hasImage) {
     const image = await downloadMediaMessage(msg, "buffer", {}, {
       logger,
       reuploadRequest: sock.updateMediaMessage,
     });
-    await sock.sendMessage(jid, { image, caption: result.text });
+    sent = await sock.sendMessage(jid, { image, caption: result.text });
   } else {
-    await sock.sendMessage(jid, { text: result.text });
+    sent = await sock.sendMessage(jid, { text: result.text });
+  }
+  if (sent?.key?.id) {
+    sentIds.add(sent.key.id);
+    if (sentIds.size > 500) sentIds.delete(sentIds.values().next().value);
   }
   logger.info({ sender, links: result.links_replaced }, "replied with tagged link");
 }
