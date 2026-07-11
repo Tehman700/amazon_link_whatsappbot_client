@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
-import { api } from "./api";
+import { api, hasToken, setToken } from "./api";
 import type { Marketplace, User } from "./types";
 import UsersView from "./views/UsersView";
 import MarketplacesView from "./views/MarketplacesView";
 import TestView from "./views/TestView";
+import LoginView from "./views/LoginView";
 import "./App.css";
 
 type Tab = "users" | "marketplaces" | "test";
 
 export default function App() {
+  const [authed, setAuthed] = useState(hasToken());
   const [tab, setTab] = useState<Tab>("users");
   const [users, setUsers] = useState<User[]>([]);
   const [marketplaces, setMarketplaces] = useState<Marketplace[]>([]);
@@ -29,8 +31,24 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    const onExpired = () => setAuthed(false);
+    window.addEventListener("auth-expired", onExpired);
+    return () => window.removeEventListener("auth-expired", onExpired);
+  }, []);
+
+  useEffect(() => {
+    if (authed) refresh();
+  }, [authed, refresh]);
+
+  if (!authed) {
+    return <LoginView onLogin={() => setAuthed(true)} />;
+  }
+
+  const logout = () => {
+    setToken(null);
+    setAuthed(false);
+    setLoaded(false);
+  };
 
   return (
     <div className="layout">
@@ -49,6 +67,7 @@ export default function App() {
           <button className={tab === "test" ? "active" : ""} onClick={() => setTab("test")}>
             Test message
           </button>
+          <button onClick={logout}>Log out</button>
         </nav>
       </header>
 

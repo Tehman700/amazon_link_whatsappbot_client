@@ -246,8 +246,10 @@ app.get("/", async (req, res) => {
     status === "connected"
       ? `<span class="badge ok">Connected</span>`
       : `<span class="badge">${status}</span>`;
+  // Refresh fast only while pairing (QR codes rotate); slow when settled.
+  const refreshSeconds = status === "waiting-for-scan" ? 10 : 120;
   res.send(`<!doctype html>
-<html><head><meta charset="utf-8"><meta http-equiv="refresh" content="10">
+<html><head><meta charset="utf-8"><meta http-equiv="refresh" content="${refreshSeconds}">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Amazon Bot — WhatsApp Adapter</title>
 <style>
@@ -268,7 +270,6 @@ app.get("/", async (req, res) => {
   ${qrImg}
   ${status === "connected" && connectedSince ? `<p class="muted">Connected since ${connectedSince.toLocaleString()}</p>` : ""}
   ${lastError ? `<p class="muted">Last error: ${lastError}</p>` : ""}
-  <p class="muted">API: ${API_BASE}</p>
   ${
     // Hidden debug view — append &events=1 to the URL to see message decisions.
     req.query.events === "1" && events.length

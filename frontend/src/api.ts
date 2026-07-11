@@ -8,11 +8,28 @@ const BASE = import.meta.env.DEV
   ? (import.meta.env.VITE_API_URL ?? "http://localhost:8000")
   : "/api";
 
+const TOKEN_KEY = "admin_token";
+let token: string | null = localStorage.getItem(TOKEN_KEY);
+
+export function setToken(value: string | null) {
+  token = value;
+  if (value) localStorage.setItem(TOKEN_KEY, value);
+  else localStorage.removeItem(TOKEN_KEY);
+}
+
+export function hasToken(): boolean {
+  return Boolean(token);
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(BASE + path, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
-  });
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(BASE + path, { headers, ...options });
+  if (res.status === 401 && path !== "/auth/login") {
+    setToken(null);
+    window.dispatchEvent(new Event("auth-expired"));
+    throw new Error("Session expired — please log in again");
+  }
   if (!res.ok) {
     let detail = res.statusText;
     try {
@@ -28,6 +45,14 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
+  login: async (username: string, password: string) => {
+    const result = await request<{ token: string }>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    });
+    setToken(result.token);
+  },
+
   listUsers: () => request<User[]>("/users"),
   createUser: (data: { name: string; whatsapp_number: string; email: string | null }) =>
     request<User>("/users", { method: "POST", body: JSON.stringify(data) }),

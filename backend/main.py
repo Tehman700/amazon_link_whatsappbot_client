@@ -1,11 +1,16 @@
 import os
 
-from fastapi import FastAPI
+from dotenv import load_dotenv
+
+load_dotenv()  # local dev credentials/config from backend/.env (gitignored)
+
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Base, SessionLocal, engine
 from app.models import Marketplace
-from app.routers import marketplaces, process, users
+from app.routers import auth, marketplaces, process, users
+from app.routers.auth import require_admin
 from app.seed import seed
 
 Base.metadata.create_all(bind=engine)
@@ -30,9 +35,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
+# /process-message stays open — the WhatsApp adapter calls it server-to-server.
 app.include_router(process.router)
-app.include_router(users.router)
-app.include_router(marketplaces.router)
+# Admin CRUD requires a login token.
+app.include_router(users.router, dependencies=[Depends(require_admin)])
+app.include_router(marketplaces.router, dependencies=[Depends(require_admin)])
 
 
 @app.get("/health")

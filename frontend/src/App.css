@@ -278,6 +278,41 @@ td.row-actions {
   font-weight: 500;
 }
 
+/* login: flat card centered on canvas, pill inputs, single ink CTA */
+.login-wrap {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 360px;
+  border-top: 1px solid var(--hairline);
+  padding-top: var(--sp-xl);
+}
+
+.login-card h1 {
+  margin-bottom: 0;
+}
+
+.login-card .muted {
+  display: block;
+  margin-bottom: var(--sp-xl);
+}
+
+.login-card button {
+  width: 100%;
+  margin-top: var(--sp-sm);
+}
+
+.login-error {
+  color: var(--sale);
+  font-size: 14px;
+  font-weight: 500;
+}
+
 @media (max-width: 640px) {
   .layout {
     padding: 0 16px var(--sp-xl);
