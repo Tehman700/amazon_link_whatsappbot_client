@@ -270,7 +270,8 @@ app.get("/", async (req, res) => {
   ${lastError ? `<p class="muted">Last error: ${lastError}</p>` : ""}
   <p class="muted">API: ${API_BASE}</p>
   ${
-    events.length
+    // Hidden debug view — append &events=1 to the URL to see message decisions.
+    req.query.events === "1" && events.length
       ? `<div class="events"><h2>Recent messages</h2>${events
           .map(
             (e) =>
