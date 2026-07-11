@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+
+# Local database
+backend/bot.db
+
+# Node
+node_modules/
+dist/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
+# Logs
+*.log

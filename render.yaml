@@ -1,0 +1,28 @@
+# Render Blueprint — deploys on every push to the connected GitHub repo.
+# One free web service (FastAPI) + one free static site (dashboard).
+# DATABASE_URL must be set in the Render dashboard to the Neon Postgres URL.
+
+services:
+  - type: web
+    name: amazon-bot-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install uv && uv sync --locked
+    startCommand: uv run uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false # paste the Neon postgres URL in the Render dashboard
+      - key: ALLOWED_ORIGINS
+        value: https://amazon-bot-admin.onrender.com
+
+  - type: web
+    name: amazon-bot-admin
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://amazon-bot-api.onrender.com

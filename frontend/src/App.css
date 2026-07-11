@@ -1,0 +1,289 @@
+/* Layout — flat catalog stacking, 48px section rhythm, no decorative chrome */
+
+.layout {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 24px var(--sp-section);
+}
+
+/* primary-nav: canvas bg, ink links, active gets 2px ink bottom underline */
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--sp-md);
+  min-height: 64px;
+  padding: var(--sp-md) 0;
+  margin-bottom: var(--sp-xl);
+  box-shadow: inset 0 -1px 0 var(--hairline-soft);
+}
+
+header h1 {
+  margin: 0;
+  font-size: 24px;
+}
+
+nav {
+  display: flex;
+  gap: var(--sp-xl);
+}
+
+nav button {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.5;
+  padding: var(--sp-sm) 0;
+  cursor: pointer;
+}
+
+nav button.active {
+  box-shadow: inset 0 -2px 0 var(--ink);
+}
+
+/* cards: flat, zero radius, zero shadow — hairline divider is the separator */
+.card {
+  background: var(--canvas);
+  border: none;
+  border-top: 1px solid var(--hairline);
+  border-radius: 0;
+  padding: var(--sp-xl) 0;
+  margin-bottom: var(--sp-md);
+}
+
+.form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-sm);
+  align-items: center;
+}
+
+.form-row input {
+  flex: 1 1 200px;
+}
+
+/* search-pill inputs: soft-cloud stage, 24px pill, ink focus ring + soft halo */
+input,
+select,
+textarea {
+  font: inherit;
+  color: var(--ink);
+  background: var(--soft-cloud);
+  border: none;
+  border-radius: var(--rounded-md);
+  padding: 8px 16px;
+  height: 40px;
+}
+
+textarea {
+  height: auto;
+  padding: 12px 16px;
+  resize: vertical;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--mute);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  background: var(--canvas);
+  box-shadow:
+    inset 0 0 0 2px var(--ink),
+    0 0 0 6px var(--soft-cloud);
+}
+
+/* buttons: pill-only vocabulary. Default = filter-chip, .primary = ink pill,
+   .danger = chip with sale text (red never fills a background) */
+button {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--rounded-lg);
+  color: var(--ink);
+  padding: 8px 24px;
+  min-height: 40px;
+  cursor: pointer;
+}
+
+button:active {
+  opacity: 0.5;
+  transform: scale(0.95);
+}
+
+button.primary {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--on-primary);
+  padding: 8px 32px;
+  min-height: 44px;
+  font-size: 16px;
+}
+
+button.danger {
+  color: var(--sale);
+  border-color: var(--hairline);
+  background: var(--canvas);
+}
+
+button.danger:active {
+  color: var(--sale-deep);
+}
+
+.muted {
+  color: var(--mute);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* users */
+.user-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  gap: var(--sp-md);
+}
+
+.user-header strong {
+  color: var(--ink);
+  font-weight: 500;
+  font-size: 16px;
+}
+
+.user-body {
+  margin-top: var(--sp-lg);
+}
+
+.tags-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--sp-md);
+  margin-bottom: var(--sp-lg);
+}
+
+.tags-grid label,
+label.stacked {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+label.stacked {
+  margin-bottom: var(--sp-lg);
+}
+
+/* tables: hairline row dividers only */
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  text-align: left;
+  padding: var(--sp-md) var(--sp-sm);
+  border-bottom: 1px solid var(--hairline);
+  font-size: 16px;
+}
+
+th {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+td {
+  color: var(--charcoal);
+}
+
+.row-actions {
+  display: flex;
+  gap: var(--sp-sm);
+  justify-content: flex-end;
+  border-bottom: 1px solid var(--hairline);
+}
+
+td.row-actions {
+  border-bottom: 1px solid var(--hairline);
+}
+
+/* error: sale color as text signal only — never a red background */
+.error-box {
+  color: var(--sale);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-md);
+  justify-content: space-between;
+}
+
+/* test panel result: message staged on soft-cloud, flat, zero radius */
+.result-text {
+  background: var(--soft-cloud);
+  border: none;
+  border-radius: 0;
+  padding: var(--sp-lg);
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.replacement {
+  display: flex;
+  gap: var(--sp-md);
+  align-items: flex-start;
+  padding: var(--sp-md) 0;
+  border-top: 1px solid var(--hairline-soft);
+  word-break: break-all;
+  font-size: 14px;
+}
+
+/* badge-promo: canvas bg, hairline outline, caption-sm, pill */
+.badge {
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  color: var(--ink);
+  border-radius: var(--rounded-lg);
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.badge.warn {
+  color: var(--mute);
+}
+
+.strike {
+  text-decoration: line-through;
+  color: var(--mute);
+}
+
+.ok {
+  color: var(--success);
+  font-weight: 500;
+}
+
+@media (max-width: 640px) {
+  .layout {
+    padding: 0 16px var(--sp-xl);
+  }
+
+  nav {
+    gap: var(--sp-lg);
+  }
+}

@@ -1,0 +1,81 @@
+/* Design tokens from design.md (Nike commerce system) */
+:root {
+  /* colors */
+  --ink: #111111;
+  --canvas: #ffffff;
+  --on-primary: #ffffff;
+  --soft-cloud: #f5f5f5;
+  --hairline: #cacacb;
+  --hairline-soft: #e5e5e5;
+  --charcoal: #39393b;
+  --mute: #707072;
+  --stone: #9e9ea0;
+  --sale: #d30005;
+  --sale-deep: #780700;
+  --success: #007d48;
+  --info: #1151ff;
+
+  /* radius */
+  --rounded-md: 24px;
+  --rounded-lg: 30px;
+  --rounded-full: 9999px;
+
+  /* spacing (8px base) */
+  --sp-xs: 4px;
+  --sp-sm: 8px;
+  --sp-md: 12px;
+  --sp-lg: 18px;
+  --sp-xl: 24px;
+  --sp-section: 48px;
+
+  font: 16px/1.5 Inter, "Helvetica Now Text", "Helvetica Neue", Helvetica, Arial,
+    sans-serif;
+  color: var(--charcoal);
+  background: var(--canvas);
+  color-scheme: light;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--canvas);
+}
+
+/* typography hierarchy — heading-xl / heading-lg / heading-md */
+h1,
+h2,
+h3 {
+  color: var(--ink);
+  font-weight: 500;
+  margin: 0 0 0.6em;
+}
+
+h1 {
+  font-size: 32px;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+h2 {
+  font-size: 24px;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+h3 {
+  font-size: 16px;
+  line-height: 1.75;
+}
+
+code {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.9em;
+  background: var(--soft-cloud);
+  padding: 1px 6px;
+}
