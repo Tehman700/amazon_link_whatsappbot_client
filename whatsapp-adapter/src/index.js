@@ -63,28 +63,73 @@ function extractText(message) {
 // the self-chat from being processed again (infinite loop guard).
 const sentIds = new Set();
 
-function ownJid() {
-  const id = sock?.user?.id ?? "";
-  return id ? id.split(":")[0] + "@s.whatsapp.net" : "";
+// Rolling log of recent message decisions, shown on the status page so the
+// bot can be debugged from a browser without SSH.
+const events = [];
+function logEvent(jid, outcome) {
+  events.unshift({ time: new Date(), jid, outcome });
+  if (events.length > 20) events.pop();
+  logger.warn({ jid, outcome }, "message event");
 }
 
-async function handleMessage(msg) {
+/** True when the chat is the account's own "Message Yourself" chat.
+ *  Handles both classic phone JIDs and WhatsApp's newer LID addressing. */
+function isSelfChat(jid) {
+  const me = sock?.user;
+  if (!me) return false;
+  const pn = (me.id ?? "").split(":")[0];
+  const lid = (me.lid ?? "").split(":")[0];
+  return jid === `${pn}@s.whatsapp.net` || (Boolean(lid) && jid === `${lid}@lid`);
+}
+
+/** Resolve the sender's phone number (+E164) from a message. */
+function resolveSender(jid, msg) {
+  if (jid.endsWith("@s.whatsapp.net")) return "+" + jid.split("@")[0];
+  if (jid.endsWith("@lid")) {
+    // LID chats hide the phone number in the jid; newer Baileys exposes it
+    // on the key, and for the self-chat it is our own number.
+    const pn = msg.key.senderPn || msg.key.participantPn;
+    if (pn) return "+" + pn.split("@")[0].split(":")[0];
+    if (msg.key.fromMe) return "+" + (sock?.user?.id ?? "").split(":")[0];
+  }
+  return null;
+}
+
+async function handleMessage(msg, upsertType) {
   if (!msg.message) return;
 
   const jid = msg.key.remoteJid ?? "";
   // Direct chats only — ignore groups, broadcast, status.
-  if (!jid.endsWith("@s.whatsapp.net")) return;
+  if (jid.endsWith("@g.us") || jid === "status@broadcast" || jid.endsWith("@newsletter"))
+    return;
+
+  const selfChat = isSelfChat(jid);
 
   // Outgoing messages are ignored, EXCEPT in the account's "Message
   // Yourself" chat, where they enable solo testing by the bot's owner.
   if (msg.key.fromMe) {
-    if (jid !== ownJid()) return;
+    if (!selfChat) return;
     if (sentIds.has(msg.key.id)) return; // our own reply — don't loop
   }
 
-  const sender = "+" + jid.split("@")[0];
+  // Own-device messages can arrive as 'append' instead of 'notify'. Accept
+  // them only in the self-chat and only if fresh, so pairing history sync
+  // never triggers a flood of replies.
+  if (upsertType !== "notify") {
+    const ts = Number(msg.messageTimestamp ?? 0) * 1000;
+    if (!selfChat || !ts || Date.now() - ts > 120_000) return;
+  }
+
+  const sender = resolveSender(jid, msg);
+  if (!sender) {
+    logEvent(jid, "skipped: could not resolve sender phone number");
+    return;
+  }
   const text = extractText(msg.message);
-  if (!text) return;
+  if (!text) {
+    logEvent(jid, "skipped: no text/caption");
+    return;
+  }
 
   let response;
   try {
@@ -94,18 +139,24 @@ async function handleMessage(msg) {
       body: JSON.stringify({ sender, text }),
     });
   } catch (err) {
-    logger.error({ err }, "core API unreachable");
+    logEvent(jid, `error: core API unreachable (${err.message})`);
     return;
   }
 
-  if (response.status === 404) return; // unregistered sender — stay silent
+  if (response.status === 404) {
+    logEvent(jid, `skipped: ${sender} is not a registered user`);
+    return;
+  }
   if (!response.ok) {
-    logger.error({ status: response.status }, "core API error");
+    logEvent(jid, `error: core API returned ${response.status}`);
     return;
   }
 
   const result = await response.json();
-  if (!result.links_replaced) return; // nothing rewritten — stay silent
+  if (!result.links_replaced) {
+    logEvent(jid, "skipped: no Amazon link found/rewritten");
+    return;
+  }
 
   const hasImage = Boolean(unwrap(msg.message)?.imageMessage);
   let sent;
@@ -122,7 +173,7 @@ async function handleMessage(msg) {
     sentIds.add(sent.key.id);
     if (sentIds.size > 500) sentIds.delete(sentIds.values().next().value);
   }
-  logger.info({ sender, links: result.links_replaced }, "replied with tagged link");
+  logEvent(jid, `replied: ${result.links_replaced} link(s) tagged for ${sender}`);
 }
 
 async function start() {
@@ -165,9 +216,10 @@ async function start() {
   });
 
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
-    if (type !== "notify") return;
     for (const msg of messages) {
-      await handleMessage(msg).catch((err) => logger.error({ err }, "handler failed"));
+      await handleMessage(msg, type).catch((err) =>
+        logEvent(msg.key?.remoteJid ?? "?", `error: handler failed (${err.message})`),
+      );
     }
   });
 }
@@ -206,6 +258,9 @@ app.get("/", async (req, res) => {
   .badge{display:inline-block;border-radius:999px;padding:6px 18px;background:#39415a;margin:16px 0;font-weight:600}
   .badge.ok{background:#1d7a3c}
   img{border-radius:8px;background:#fff;padding:8px;margin-top:8px}
+  .events{text-align:left;margin-top:24px;border-top:1px solid #39415a;padding-top:12px}
+  .events h2{font-size:14px;color:#8a93a6;margin:0 0 8px}
+  .event{font-size:13px;padding:6px 0;border-bottom:1px solid #262d40;word-break:break-all}
 </style></head><body><div class="card">
   <h1>Amazon Bot — WhatsApp Adapter</h1>
   <p class="muted">Linked-device bridge to the core API</p>
@@ -214,6 +269,16 @@ app.get("/", async (req, res) => {
   ${status === "connected" && connectedSince ? `<p class="muted">Connected since ${connectedSince.toLocaleString()}</p>` : ""}
   ${lastError ? `<p class="muted">Last error: ${lastError}</p>` : ""}
   <p class="muted">API: ${API_BASE}</p>
+  ${
+    events.length
+      ? `<div class="events"><h2>Recent messages</h2>${events
+          .map(
+            (e) =>
+              `<div class="event"><span class="muted">${e.time.toLocaleTimeString()}</span> ${e.jid}<br>${e.outcome}</div>`,
+          )
+          .join("")}</div>`
+      : ""
+  }
 </div></body></html>`);
 });
 
