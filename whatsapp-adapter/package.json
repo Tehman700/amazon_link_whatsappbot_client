@@ -1,0 +1,20 @@
+{
+  "name": "whatsapp-adapter",
+  "version": "1.0.0",
+  "description": "WhatsApp linked-device adapter for the Amazon affiliate link bot",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "baileys": "^6.7.16",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "pino": "^9.4.0",
+    "qrcode": "^1.5.4"
+  }
+}
