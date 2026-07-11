@@ -1,6 +1,7 @@
 name: Deploy WhatsApp adapter to EC2
 
 on:
+  workflow_dispatch: # manual re-run from the Actions tab
   push:
     branches: [main]
     paths:
