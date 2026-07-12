@@ -1,7 +1,30 @@
 # Project Status — WhatsApp Amazon Affiliate Link Bot
 
-Last updated: 2026-07-12. Read [project-handout.md](project-handout.md) first for the
+Last updated: 2026-07-13. Read [project-handout.md](project-handout.md) first for the
 original client spec; this file records everything built and deployed since.
+
+## ⚠️ 2026-07-12/13 incident: replies not delivered (LID) — RESOLVED
+
+Symptom: bot showed "Connected" and processed messages, but registered users got
+no replies. Root cause chain (three stacked findings):
+
+1. The bot's own number had been deleted from the users table when the client
+   rebuilt the user list → self-chat tests were rejected as unregistered
+   (data issue, re-registered via API).
+2. WhatsApp migrated these accounts to **LID privacy addressing** (chat jids
+   like `66932...@lid` instead of the phone number). Sender resolution was
+   hardened to extract the real number from every known key field.
+3. The killer: on Baileys 6.x, replies sent to LID-migrated recipients were
+   **accepted by the server but never delivered** — logs said `replied`,
+   phones showed nothing. Even routing to the classic phone-number jid didn't
+   deliver. Fix: **upgraded to Baileys 7.0.0-rc13** (native LID session
+   handling). Delivery confirmed working on real WhatsApp 2026-07-13.
+
+Rules that must survive future edits: never reply to a `@lid` jid (route to the
+resolved `@s.whatsapp.net` jid); keep the per-message decision log (status page
+`&events=1`) — it is the only way these silent failures are visible. Tag
+duplication across users and blank tags were investigated and are NOT failure
+causes (blank tag = deliberate silence for that marketplace only).
 
 ## What the system does (proven end-to-end on real WhatsApp)
 
@@ -78,24 +101,33 @@ commit secrets).
   cards, hairline dividers).
 
 ### WhatsApp adapter (`whatsapp-adapter/src/index.js`)
-- Baileys linked device; session in `whatsapp-adapter/session/` (gitignored) —
-  survives restarts; on remote unlink it wipes the session and shows a fresh QR
-  automatically (tested live).
-- Handles LID chats (`senderPn` fallback) and `append`-type upserts (own-device
+- **Baileys 7.0.0-rc13** (required — see LID incident above; 6.x cannot deliver
+  to LID-migrated recipients). Linked device; session in
+  `whatsapp-adapter/session/` (gitignored) — survives restarts; on remote
+  unlink it wipes the session and shows a fresh QR automatically (tested live).
+- Handles LID chats (sender resolved via senderPn/participantPn/remoteJidAlt/
+  participantAlt/lid-mapping store) and `append`-type upserts (own-device
   messages), guarded so pairing history sync can't trigger reply floods.
+  Replies always go to the resolved `@s.whatsapp.net` jid, never to `@lid`.
+- Every skip path logs a decision (undecryptable/stub content, non-notify
+  upserts, unresolvable sender, unregistered, no link) — visible at `&events=1`.
 - **Solo testing**: the account's "Message Yourself" chat processes own messages;
   a sent-ID set stops the bot's replies from re-triggering (loop guard).
 - Replies only when `links_replaced > 0`; 404 (unregistered) and no-link → silent.
 - Status page: QR pairing, connection badge; refresh 10s while pairing, 120s
   otherwise; hidden per-message decision log at `&events=1`.
 
-## Current production data
+## Current production data (as of 2026-07-13)
 
-- Single user "Beast Affiliate", WhatsApp **+923460976174** (= the bot's own
-  number — owner tests via Message Yourself). 9 tags: beastaffiliate-20 (US),
-  -21 (UK), 0a-20 (CA), 04-21 (DE), 07-28 (FR), 06-21 (IT), 00-21 (ES),
-  09-29 (NL), -22 (AU). The sender number in the DB must exactly match the
-  E.164 format `+92...`.
+- 9 users created by the client (see the dashboard Overview tab for the list).
+  The sender number in the DB must exactly match E.164 format (`+92...`).
+- **All tags are temporarily `testabc`** (bulk-set on 2026-07-13 for WhatsApp
+  delivery testing at the owner's request). The real pre-test tags are backed
+  up outside this public repo (developer's local Claude memory) and must be
+  restored before real use.
+- The bot's own number (`+923460976174`) had a matching user which was deleted
+  during testing — the bot's current number must be registered for self-chat
+  (Message Yourself) testing to get replies.
 
 ## Testing
 
@@ -119,3 +151,19 @@ Run: start the API, then `uv run python tests/test_api.py` (override target with
   Cloud API (reply-only service conversations are free; only the adapter changes).
 - No LLM/AI anywhere — deterministic by spec. No PA-API, no scraping product data.
 - render.yaml is a leftover from an abandoned Render deployment option (unused).
+
+## Agreed scale-up test plan (2026-07-13, not yet executed)
+
+150 real users cannot be simulated (WhatsApp accounts need real numbers/devices).
+The variance that matters is ~5 account states, each testable with one person:
+LID-migrated account (already proven), classic account, WhatsApp Business app
+sender, sender with active linked devices, sender on an outdated app version.
+
+- Stage 1: the 9 existing real users each send 4 message shapes (plain link,
+  image+caption, funnel link, two links) — verify replies + events log.
+- Stage 2: ramp real users 20 → 50 → 150 over weeks, watching `&events=1`.
+- BEFORE ramping past ~20 users: build the jitter/rate-limit reply queue in the
+  adapter (randomized 2–8s delay, global send cap, typing indicator) — the
+  scale risk is WhatsApp ban behavior, not load. Endgame at 150–200 users:
+  migrate the adapter to the official WhatsApp Business Cloud API (reply-only
+  service conversations are free; only the adapter changes).
