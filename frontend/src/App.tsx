@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, hasToken, setToken } from "./api";
 import type { Marketplace, User } from "./types";
+import OverviewView from "./views/OverviewView";
 import UsersView from "./views/UsersView";
 import MarketplacesView from "./views/MarketplacesView";
 import TestView from "./views/TestView";
 import LoginView from "./views/LoginView";
 import "./App.css";
 
-type Tab = "users" | "marketplaces" | "test";
+type Tab = "overview" | "users" | "marketplaces" | "test";
 
 export default function App() {
   const [authed, setAuthed] = useState(hasToken());
-  const [tab, setTab] = useState<Tab>("users");
+  const [tab, setTab] = useState<Tab>("overview");
   const [users, setUsers] = useState<User[]>([]);
   const [marketplaces, setMarketplaces] = useState<Marketplace[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +56,12 @@ export default function App() {
       <header>
         <h1>Amazon Affiliate Bot — Admin</h1>
         <nav>
+          <button
+            className={tab === "overview" ? "active" : ""}
+            onClick={() => setTab("overview")}
+          >
+            Overview
+          </button>
           <button className={tab === "users" ? "active" : ""} onClick={() => setTab("users")}>
             Users
           </button>
@@ -79,6 +86,14 @@ export default function App() {
 
       {loaded && !error && (
         <>
+          {tab === "overview" && (
+            <OverviewView
+              users={users}
+              marketplaces={marketplaces}
+              refresh={refresh}
+              onError={setError}
+            />
+          )}
           {tab === "users" && (
             <UsersView users={users} marketplaces={marketplaces} refresh={refresh} onError={setError} />
           )}

@@ -278,6 +278,71 @@ td.row-actions {
   font-weight: 500;
 }
 
+/* overview: stat row + spreadsheet-style grid with click-to-edit cells */
+.stats {
+  display: flex;
+  gap: var(--sp-section);
+  padding: var(--sp-xl) 0;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+}
+
+.stat-number {
+  font-size: 32px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--ink);
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.overview-table th,
+.overview-table td {
+  font-size: 14px;
+  padding: 6px 6px;
+  white-space: nowrap;
+}
+
+.cell-btn {
+  background: none;
+  border: none;
+  border-radius: 0;
+  min-height: 0;
+  padding: 4px 6px;
+  font-size: 14px;
+  color: var(--ink);
+  cursor: pointer;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cell-btn:hover {
+  background: var(--soft-cloud);
+  border: none;
+}
+
+.cell-btn.empty {
+  color: var(--stone);
+}
+
+.cell-input {
+  height: 30px;
+  padding: 4px 10px;
+  font-size: 14px;
+  min-width: 140px;
+}
+
+.overview-hint {
+  margin-top: var(--sp-md);
+  font-size: 12px;
+}
+
 /* login: flat card centered on canvas, pill inputs, single ink CTA */
 .login-wrap {
   min-height: 100vh;
