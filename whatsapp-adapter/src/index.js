@@ -82,26 +82,50 @@ function isSelfChat(jid) {
   return jid === `${pn}@s.whatsapp.net` || (Boolean(lid) && jid === `${lid}@lid`);
 }
 
-/** Resolve the sender's phone number (+E164) from a message. */
+/** Resolve the sender's phone number (+E164) from a message.
+ *  Handles classic phone JIDs and LID (privacy-addressed) chats via every
+ *  known fallback: key alt fields (6.7.x: senderPn/participantPn, v7:
+ *  remoteJidAlt/participantAlt) and the lid-mapping store when available. */
 function resolveSender(jid, msg) {
+  const pnFrom = (value) =>
+    value && String(value).includes("@s.whatsapp.net")
+      ? "+" + String(value).split("@")[0].split(":")[0]
+      : null;
+
   if (jid.endsWith("@s.whatsapp.net")) return "+" + jid.split("@")[0];
   if (jid.endsWith("@lid")) {
-    // LID chats hide the phone number in the jid; newer Baileys exposes it
-    // on the key, and for the self-chat it is our own number.
-    const pn = msg.key.senderPn || msg.key.participantPn;
-    if (pn) return "+" + pn.split("@")[0].split(":")[0];
-    if (msg.key.fromMe) return "+" + (sock?.user?.id ?? "").split(":")[0];
+    const key = msg.key ?? {};
+    const direct =
+      pnFrom(key.senderPn) ||
+      pnFrom(key.participantPn) ||
+      pnFrom(key.remoteJidAlt) ||
+      pnFrom(key.participantAlt) ||
+      pnFrom(key.participant);
+    if (direct) return direct;
+    try {
+      const mapped = sock?.signalRepository?.lidMapping?.getPNForLID?.(jid);
+      const viaStore = pnFrom(mapped);
+      if (viaStore) return viaStore;
+    } catch {
+      /* mapping store not available in this Baileys version */
+    }
+    if (key.fromMe) return "+" + (sock?.user?.id ?? "").split(":")[0];
   }
   return null;
 }
 
 async function handleMessage(msg, upsertType) {
-  if (!msg.message) return;
-
-  const jid = msg.key.remoteJid ?? "";
+  const jid = msg.key?.remoteJid ?? "";
   // Direct chats only — ignore groups, broadcast, status.
   if (jid.endsWith("@g.us") || jid === "status@broadcast" || jid.endsWith("@newsletter"))
     return;
+
+  // Undecryptable / stub messages have no content — log instead of silence,
+  // repeated occurrences point at a broken session (fix: unlink + re-pair).
+  if (!msg.message) {
+    logEvent(jid, `skipped: no content (stub=${msg.messageStubType ?? "?"} type=${upsertType})`);
+    return;
+  }
 
   const selfChat = isSelfChat(jid);
 
@@ -113,21 +137,27 @@ async function handleMessage(msg, upsertType) {
   }
 
   // Own-device messages can arrive as 'append' instead of 'notify'. Accept
-  // them only in the self-chat and only if fresh, so pairing history sync
+  // append only in the self-chat and only if fresh, so pairing history sync
   // never triggers a flood of replies.
   if (upsertType !== "notify") {
     const ts = Number(msg.messageTimestamp ?? 0) * 1000;
-    if (!selfChat || !ts || Date.now() - ts > 120_000) return;
+    if (!selfChat || !ts || Date.now() - ts > 120_000) {
+      logEvent(jid, `skipped: non-notify upsert (type=${upsertType}, selfChat=${selfChat})`);
+      return;
+    }
   }
 
   const sender = resolveSender(jid, msg);
   if (!sender) {
-    logEvent(jid, "skipped: could not resolve sender phone number");
+    logEvent(
+      jid,
+      `skipped: cannot resolve sender number (key=${JSON.stringify(msg.key)})`,
+    );
     return;
   }
   const text = extractText(msg.message);
   if (!text) {
-    logEvent(jid, "skipped: no text/caption");
+    logEvent(jid, `skipped: no text/caption (from ${sender})`);
     return;
   }
 
