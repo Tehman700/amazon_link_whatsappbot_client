@@ -188,6 +188,13 @@ async function handleMessage(msg, upsertType) {
     return;
   }
 
+  // Never reply to a @lid address — Baileys 6.x accepts such sends but they
+  // are frequently not delivered. We know the sender's real number, so reply
+  // to the classic phone-number jid instead (WhatsApp shows both in one chat).
+  const replyJid = jid.endsWith("@lid")
+    ? sender.slice(1) + "@s.whatsapp.net"
+    : jid;
+
   const hasImage = Boolean(unwrap(msg.message)?.imageMessage);
   let sent;
   if (hasImage) {
@@ -195,15 +202,18 @@ async function handleMessage(msg, upsertType) {
       logger,
       reuploadRequest: sock.updateMediaMessage,
     });
-    sent = await sock.sendMessage(jid, { image, caption: result.text });
+    sent = await sock.sendMessage(replyJid, { image, caption: result.text });
   } else {
-    sent = await sock.sendMessage(jid, { text: result.text });
+    sent = await sock.sendMessage(replyJid, { text: result.text });
   }
   if (sent?.key?.id) {
     sentIds.add(sent.key.id);
     if (sentIds.size > 500) sentIds.delete(sentIds.values().next().value);
   }
-  logEvent(jid, `replied: ${result.links_replaced} link(s) tagged for ${sender}`);
+  logEvent(
+    jid,
+    `replied: ${result.links_replaced} link(s) tagged for ${sender} (to ${replyJid})`,
+  );
 }
 
 async function start() {
