@@ -44,10 +44,56 @@ async def _follow(client: httpx.AsyncClient, url: str) -> httpx.Response | None:
         return None
 
 
+async def _site_specific(
+    client: httpx.AsyncClient, url: str, domain_map: dict[str, object]
+) -> str | None:
+    """Handlers for the client's own funnel sites, which are JS-rendered SPAs
+    (their HTML contains no Amazon link to scan). Each handler calls the
+    site's data API directly."""
+    parts = urlsplit(url)
+    host = (parts.hostname or "").lower()
+
+    # pointmarketing.shop/prodetail/<mongo-id> -> product JSON with .Link
+    if host.endswith("pointmarketing.shop"):
+        m = re.search(r"/(?:active)?prodetail/([a-f0-9]{24})", parts.path)
+        if m:
+            r = await _follow(
+                client, f"https://pointmarketing.shop/api/products/{m.group(1)}"
+            )
+            if r is not None and r.status_code == 200:
+                try:
+                    link = (r.json().get("product") or {}).get("Link") or ""
+                except ValueError:
+                    link = ""
+                if link and match_marketplace(_host(link), domain_map):
+                    return link
+
+    # ilearner.dev/link/<id> and ilearner-store.com/p/<id>[/slug]
+    # -> api.ilearner.dev/go/<id> 302s straight to the Amazon URL
+    if host == "ilearner.dev" or host.endswith((".ilearner.dev", "ilearner-store.com")):
+        m = re.search(r"/(?:link|p)/([A-Za-z0-9_-]+)", parts.path)
+        if m:
+            try:
+                r = await client.get(
+                    f"https://api.ilearner.dev/go/{m.group(1)}", follow_redirects=False
+                )
+            except httpx.HTTPError:
+                return None
+            location = r.headers.get("location", "")
+            if location and match_marketplace(_host(location), domain_map):
+                return location
+
+    return None
+
+
 async def resolve_amazon_url(
     client: httpx.AsyncClient, url: str, domain_map: dict[str, object]
 ) -> str | None:
     """Return the Amazon marketplace URL a non-Amazon link leads to, or None."""
+    direct = await _site_specific(client, url, domain_map)
+    if direct:
+        return direct
+
     response = await _follow(client, url)
     if response is None:
         return None
