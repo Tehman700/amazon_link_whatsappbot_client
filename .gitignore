@@ -27,3 +27,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Local prototypes - not part of the deployed product
+hub-prototype/
