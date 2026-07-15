@@ -91,28 +91,63 @@ function alreadyProcessed(id) {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// SCALE FIX 3 — single global reply queue: replies leave one at a time with
-// randomized human-ish spacing and a typing indicator, so a user forwarding
-// 10-15 products never triggers machine-gun sends, and simultaneous bursts
-// from many users never stack into an outbound flood (ban-risk shaping).
-const replyQueue = [];
+// SCALE FIX 3 (v2) — per-chat queues, round-robin fairness, adaptive pacing.
+// One user's 15-message burst never blocks other chats (each chat's next
+// reply interleaves). Gaps between sends adapt to the bot's own recent send
+// rate: effectively instant while quiet, stretching to 2-4s under high
+// traffic — the aggregate blast is what looks robotic, so that's the only
+// time we slow down.
+const chatQueues = new Map(); // chatJid -> pending reply jobs
+const chatOrder = []; // round-robin ring of chats with pending jobs
 let queueRunning = false;
+const sendTimes = []; // timestamps of recent sends (adaptive rate window)
+
+function recentSendsPerMinute() {
+  const cutoff = Date.now() - 60_000;
+  while (sendTimes.length && sendTimes[0] < cutoff) sendTimes.shift();
+  return sendTimes.length;
+}
+
+function nextGapMs() {
+  const rate = recentSendsPerMinute();
+  if (rate <= 5) return 100 + Math.random() * 300; // quiet: effectively instant
+  if (rate <= 12) return 1000 + Math.random() * 1000; // warming up: 1-2s
+  return 2000 + Math.random() * 2000; // high traffic: 2-4s
+}
+
+function pendingReplies() {
+  let count = 0;
+  for (const queue of chatQueues.values()) count += queue.length;
+  return count;
+}
 
 function enqueueReply(chatJid, run) {
-  replyQueue.push({ chatJid, run });
+  const queue = chatQueues.get(chatJid);
+  if (queue) {
+    queue.push(run);
+  } else {
+    chatQueues.set(chatJid, [run]);
+    chatOrder.push(chatJid);
+  }
   if (!queueRunning) void runReplyQueue();
 }
 
 async function runReplyQueue() {
   queueRunning = true;
-  while (replyQueue.length) {
-    const job = replyQueue.shift();
+  while (chatOrder.length) {
+    const chatJid = chatOrder.shift();
+    const queue = chatQueues.get(chatJid);
+    const run = queue?.shift();
+    if (queue?.length) chatOrder.push(chatJid); // chat rejoins the END of the ring
+    else chatQueues.delete(chatJid);
+    if (!run) continue;
     try {
-      await job.run();
+      await run();
+      sendTimes.push(Date.now());
     } catch (err) {
-      logEvent(job.chatJid, `error: queued send failed (${err.message})`);
+      logEvent(chatJid, `error: queued send failed (${err.message})`);
     }
-    if (replyQueue.length) await sleep(2000 + Math.random() * 6000);
+    if (chatOrder.length) await sleep(nextGapMs());
   }
   queueRunning = false;
 }
@@ -256,14 +291,18 @@ async function handleMessage(msg, upsertType) {
   const caption = result.text;
   const links = result.links_replaced;
 
-  // SCALE FIX 3: replies leave through the paced global queue.
+  // SCALE FIX 3: replies leave through the paced per-chat queue.
   enqueueReply(jid, async () => {
-    try {
-      await sock.sendPresenceUpdate("composing", replyJid);
-    } catch {
-      /* presence is cosmetic — never fatal */
+    // Human touch: sometimes visibly type first, sometimes just reply.
+    const showTyping = Math.random() < 0.6;
+    if (showTyping) {
+      try {
+        await sock.sendPresenceUpdate("composing", replyJid);
+      } catch {
+        /* presence is cosmetic — never fatal */
+      }
+      await sleep(600 + Math.random() * 1200);
     }
-    await sleep(800 + Math.random() * 1500);
     let sent;
     if (hasImage) {
       const image = await downloadMediaMessage(msg, "buffer", {}, {
@@ -274,10 +313,12 @@ async function handleMessage(msg, upsertType) {
     } else {
       sent = await sock.sendMessage(replyJid, { text: caption });
     }
-    try {
-      await sock.sendPresenceUpdate("paused", replyJid);
-    } catch {
-      /* presence is cosmetic — never fatal */
+    if (showTyping) {
+      try {
+        await sock.sendPresenceUpdate("paused", replyJid);
+      } catch {
+        /* presence is cosmetic — never fatal */
+      }
     }
     rememberSent(sent);
     if (sent?.key?.id) {
@@ -286,8 +327,9 @@ async function handleMessage(msg, upsertType) {
     }
     logEvent(jid, `replied: ${links} link(s) tagged for ${sender} (to ${replyJid})`);
   });
-  if (replyQueue.length > 1) {
-    logEvent(jid, `queued: reply for ${sender} (position ${replyQueue.length})`);
+  const backlog = pendingReplies();
+  if (backlog > 1) {
+    logEvent(jid, `queued: reply for ${sender} (${backlog} pending)`);
   }
 }
 
