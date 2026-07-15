@@ -63,6 +63,60 @@ function extractText(message) {
 // the self-chat from being processed again (infinite loop guard).
 const sentIds = new Set();
 
+// SCALE FIX 1 — sent-message store answering WhatsApp retry requests. When a
+// recipient can't decrypt a reply ("Waiting for this message"), their phone
+// asks us to re-send it re-encrypted; Baileys fulfils that via the getMessage
+// hook reading from this store. Without it, stuck bubbles never resolve.
+const sentStore = new Map();
+
+function rememberSent(sent) {
+  if (!sent?.key?.id || !sent.message) return;
+  sentStore.set(sent.key.id, sent.message);
+  if (sentStore.size > 3000) sentStore.delete(sentStore.keys().next().value);
+}
+
+// SCALE FIX 2 — incoming dedupe: WhatsApp can redeliver the same message
+// (retry receipts, notify/append overlap). Never reply twice to one id.
+// Only ids of messages WITH content are recorded, so an undecryptable stub
+// followed by its successfully retried content is still processed.
+const processedIds = new Set();
+
+function alreadyProcessed(id) {
+  if (!id) return false;
+  if (processedIds.has(id)) return true;
+  processedIds.add(id);
+  if (processedIds.size > 5000) processedIds.delete(processedIds.values().next().value);
+  return false;
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// SCALE FIX 3 — single global reply queue: replies leave one at a time with
+// randomized human-ish spacing and a typing indicator, so a user forwarding
+// 10-15 products never triggers machine-gun sends, and simultaneous bursts
+// from many users never stack into an outbound flood (ban-risk shaping).
+const replyQueue = [];
+let queueRunning = false;
+
+function enqueueReply(chatJid, run) {
+  replyQueue.push({ chatJid, run });
+  if (!queueRunning) void runReplyQueue();
+}
+
+async function runReplyQueue() {
+  queueRunning = true;
+  while (replyQueue.length) {
+    const job = replyQueue.shift();
+    try {
+      await job.run();
+    } catch (err) {
+      logEvent(job.chatJid, `error: queued send failed (${err.message})`);
+    }
+    if (replyQueue.length) await sleep(2000 + Math.random() * 6000);
+  }
+  queueRunning = false;
+}
+
 // Rolling log of recent message decisions, shown on the status page so the
 // bot can be debugged from a browser without SSH.
 const events = [];
@@ -136,6 +190,9 @@ async function handleMessage(msg, upsertType) {
     if (sentIds.has(msg.key.id)) return; // our own reply — don't loop
   }
 
+  // SCALE FIX 2: redelivered messages are processed exactly once.
+  if (alreadyProcessed(msg.key.id)) return;
+
   // Own-device messages can arrive as 'append' instead of 'notify'. Accept
   // append only in the self-chat and only if fresh, so pairing history sync
   // never triggers a flood of replies.
@@ -196,24 +253,42 @@ async function handleMessage(msg, upsertType) {
     : jid;
 
   const hasImage = Boolean(unwrap(msg.message)?.imageMessage);
-  let sent;
-  if (hasImage) {
-    const image = await downloadMediaMessage(msg, "buffer", {}, {
-      logger,
-      reuploadRequest: sock.updateMediaMessage,
-    });
-    sent = await sock.sendMessage(replyJid, { image, caption: result.text });
-  } else {
-    sent = await sock.sendMessage(replyJid, { text: result.text });
+  const caption = result.text;
+  const links = result.links_replaced;
+
+  // SCALE FIX 3: replies leave through the paced global queue.
+  enqueueReply(jid, async () => {
+    try {
+      await sock.sendPresenceUpdate("composing", replyJid);
+    } catch {
+      /* presence is cosmetic — never fatal */
+    }
+    await sleep(800 + Math.random() * 1500);
+    let sent;
+    if (hasImage) {
+      const image = await downloadMediaMessage(msg, "buffer", {}, {
+        logger,
+        reuploadRequest: sock.updateMediaMessage,
+      });
+      sent = await sock.sendMessage(replyJid, { image, caption });
+    } else {
+      sent = await sock.sendMessage(replyJid, { text: caption });
+    }
+    try {
+      await sock.sendPresenceUpdate("paused", replyJid);
+    } catch {
+      /* presence is cosmetic — never fatal */
+    }
+    rememberSent(sent);
+    if (sent?.key?.id) {
+      sentIds.add(sent.key.id);
+      if (sentIds.size > 500) sentIds.delete(sentIds.values().next().value);
+    }
+    logEvent(jid, `replied: ${links} link(s) tagged for ${sender} (to ${replyJid})`);
+  });
+  if (replyQueue.length > 1) {
+    logEvent(jid, `queued: reply for ${sender} (position ${replyQueue.length})`);
   }
-  if (sent?.key?.id) {
-    sentIds.add(sent.key.id);
-    if (sentIds.size > 500) sentIds.delete(sentIds.values().next().value);
-  }
-  logEvent(
-    jid,
-    `replied: ${result.links_replaced} link(s) tagged for ${sender} (to ${replyJid})`,
-  );
 }
 
 async function start() {
@@ -225,6 +300,8 @@ async function start() {
     auth: state,
     logger,
     markOnlineOnConnect: false,
+    // SCALE FIX 1: lets Baileys answer recipients' re-send (retry) requests.
+    getMessage: async (key) => sentStore.get(key?.id),
   });
 
   sock.ev.on("creds.update", saveCreds);
