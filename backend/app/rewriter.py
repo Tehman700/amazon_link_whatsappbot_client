@@ -55,13 +55,41 @@ def find_urls(text: str) -> list[str]:
     return [_clean_url_match(m.group(0)) for m in URL_RE.finditer(text)]
 
 
+# Amazon product id (ASIN) in a URL path: /dp/<ASIN>, /gp/product/<ASIN>, ...
+ASIN_PATH_RE = re.compile(r"/(?:dp|gp/product|gp/aw/d|product)/([A-Z0-9]{10})(?=[/?]|$)")
+
+# Query params that change what the customer sees/buys — everything else
+# (ref, social_share, rsd, edk, linkCode, ...) is share-tracking residue.
+KEEP_PARAMS = {"th", "psc", "smid", "m"}
+
+
 def rewrite_url(url: str, tag: str) -> str:
     """Set tag=<tag> on the URL, merging correctly with existing query params.
 
-    Uses proper URL parsing, never string concatenation. An existing tag
-    param (someone else's affiliate tag) is replaced.
+    When the URL contains a recognizable product id (ASIN), it is rebuilt in
+    canonical short form — https://<host>/dp/<ASIN>?tag=... — keeping only
+    params that affect the product shown (KEEP_PARAMS). Share links carry
+    hundreds of chars of tracking junk that does nothing for attribution;
+    the tag param is all Amazon's affiliate system reads.
+
+    Without a confident ASIN match, falls back to the original URL with the
+    tag merged in (previous behavior). An existing tag param (someone else's
+    affiliate tag) is replaced in both paths. Proper URL parsing throughout,
+    never string concatenation.
     """
     parts = urlsplit(url)
+    asin = ASIN_PATH_RE.search(parts.path)
+
+    if asin:
+        params = [
+            (k, v)
+            for k, v in parse_qsl(parts.query, keep_blank_values=True)
+            if k.lower() in KEEP_PARAMS
+        ]
+        params.append(("tag", tag))
+        query = urlencode(params, quote_via=quote)
+        return urlunsplit((parts.scheme, parts.netloc, f"/dp/{asin.group(1)}", query, ""))
+
     params = [
         (k, v)
         for k, v in parse_qsl(parts.query, keep_blank_values=True)

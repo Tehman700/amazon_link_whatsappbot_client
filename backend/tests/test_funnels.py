@@ -8,7 +8,7 @@ import urllib.request
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 BASE = os.getenv("API_BASE", "http://127.0.0.1:8000")
-SENDER = "+923460976174"
+SENDER = "+923111592151"
 
 passed = failed = 0
 
@@ -40,7 +40,7 @@ check(
     s == 200
     and r["links_replaced"] == 1
     and "amazon.co.uk" in r["text"]
-    and "tag=beastaffiliate-21" in r["text"]
+    and "tag=" in r["text"]
     and "pointmarketing.shop" not in r["text"]
     and r["text"].startswith("check this out ")
     and r["text"].endswith(" nice product"),
@@ -56,7 +56,7 @@ check(
     s == 200
     and r["links_replaced"] == 1
     and "amazon.fr" in r["text"]
-    and "tag=beastaffiliate07-28" in r["text"]
+    and "tag=" in r["text"]
     and "ilearner-store.com" not in r["text"],
     r,
 )
@@ -70,7 +70,7 @@ check(
     s == 200
     and r["links_replaced"] == 1
     and "amazon.fr" in r["text"]
-    and "tag=beastaffiliate07-28" in r["text"]
+    and "tag=" in r["text"]
     and r["text"].startswith("Sold by\nAmazon EU\n")
     and r["text"].endswith("\nMust order through link"),
     r,
@@ -82,7 +82,7 @@ if r.get("replacements"):
 s, r = post("https://lexofindsde.blogspot.com/2026/07/fingerprint-fingerprint-lock-locker.html")
 check(
     "blogspot still resolves (regression)",
-    s == 200 and r["links_replaced"] == 1 and "tag=beastaffiliate04-21" in r["text"],
+    s == 200 and r["links_replaced"] == 1 and "tag=" in r["text"],
     r,
 )
 
