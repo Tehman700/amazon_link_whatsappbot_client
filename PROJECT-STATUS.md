@@ -111,6 +111,16 @@ commit secrets).
   Replies always go to the resolved `@s.whatsapp.net` jid, never to `@lid`.
 - Every skip path logs a decision (undecryptable/stub content, non-notify
   upserts, unresolvable sender, unregistered, no link) — visible at `&events=1`.
+- **SCALE FIX (2026-07-15, commit 43b3320, revert anchor: git tag
+  `pre-scale-fix`)** — three changes for 40→200-user scale:
+  (1) sent-message store + `getMessage` hook so recipient retry requests are
+  fulfilled (cures stuck "waiting for this message" bubbles);
+  (2) incoming message-id dedupe (redeliveries processed once — no more
+  double/triple replies);
+  (3) global paced reply queue — one send at a time, 2–8s randomized spacing,
+  typing indicator; bursts of 10–15 forwarded products pace out human-like.
+  **Revert procedure** if the owner says "go back before SCALE FIX":
+  `git checkout pre-scale-fix -- whatsapp-adapter` → commit → push (auto-deploys).
 - **Solo testing**: the account's "Message Yourself" chat processes own messages;
   a sent-ID set stops the bot's replies from re-triggering (loop guard).
 - Replies only when `links_replaced > 0`; 404 (unregistered) and no-link → silent.
