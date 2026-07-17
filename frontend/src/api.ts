@@ -54,10 +54,23 @@ export const api = {
   },
 
   listUsers: () => request<User[]>("/users"),
-  createUser: (data: { name: string; whatsapp_number: string; email: string | null }) =>
-    request<User>("/users", { method: "POST", body: JSON.stringify(data) }),
-  updateUser: (id: number, data: { name: string; whatsapp_number: string; email: string | null }) =>
-    request<User>(`/users/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  createUser: (data: {
+    name: string;
+    whatsapp_number: string;
+    email: string | null;
+    link_preference?: "direct" | "hub";
+    store_name?: string;
+  }) => request<User>("/users", { method: "POST", body: JSON.stringify(data) }),
+  updateUser: (
+    id: number,
+    data: {
+      name: string;
+      whatsapp_number: string;
+      email: string | null;
+      link_preference: "direct" | "hub";
+      store_name: string;
+    },
+  ) => request<User>(`/users/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   deleteUser: (id: number) => request<void>(`/users/${id}`, { method: "DELETE" }),
 
   setTrackingIds: (userId: number, items: { marketplace_id: number; tag: string }[]) =>

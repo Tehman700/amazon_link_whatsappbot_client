@@ -11,6 +11,13 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(120))
     whatsapp_number: Mapped[str] = mapped_column(String(32), unique=True, index=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Reply format: 'direct' = tagged Amazon link (original behavior, default),
+    # 'hub' = article page on the Beast Affiliates website. server_default so
+    # existing production rows keep behaving exactly as before the migration.
+    link_preference: Mapped[str] = mapped_column(
+        String(8), default="direct", server_default="direct"
+    )
+    store_name: Mapped[str] = mapped_column(String(120), default="", server_default="")
 
     tracking_ids: Mapped[list["TrackingID"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"

@@ -15,6 +15,25 @@ from app.seed import seed
 
 Base.metadata.create_all(bind=engine)
 
+# Lightweight startup migration: create_all never adds columns to existing
+# tables, so bring the live users table up to the current model. Idempotent
+# (IF NOT EXISTS on Postgres; duplicate-column errors swallowed on SQLite).
+from sqlalchemy import text as _text  # noqa: E402
+
+for _ddl in (
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS link_preference VARCHAR(8) DEFAULT 'direct'",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS store_name VARCHAR(120) DEFAULT ''",
+):
+    try:
+        with engine.begin() as _conn:
+            _conn.execute(_text(_ddl))
+    except Exception:
+        try:  # SQLite has no IF NOT EXISTS for columns
+            with engine.begin() as _conn:
+                _conn.execute(_text(_ddl.replace(" IF NOT EXISTS", "")))
+        except Exception:
+            pass  # column already exists
+
 # Bootstrap a fresh database (e.g. first production deploy) automatically.
 # seed() is idempotent, but skip it entirely once marketplaces exist so a
 # deliberately emptied table isn't resurrected on restart.

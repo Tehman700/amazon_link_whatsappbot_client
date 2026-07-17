@@ -92,6 +92,8 @@ function UserCard({
     name: user.name,
     whatsapp_number: user.whatsapp_number,
     email: user.email ?? "",
+    link_preference: user.link_preference ?? "direct",
+    store_name: user.store_name ?? "",
   });
   const [tags, setTags] = useState<Record<number, string>>(() =>
     Object.fromEntries(user.tracking_ids.map((t) => [t.marketplace_id, t.tag])),
@@ -103,6 +105,8 @@ function UserCard({
         name: edit.name.trim(),
         whatsapp_number: edit.whatsapp_number.trim(),
         email: edit.email.trim() || null,
+        link_preference: edit.link_preference,
+        store_name: edit.store_name.trim(),
       });
       await refresh();
     } catch (e) {
@@ -146,6 +150,9 @@ function UserCard({
           <strong>{user.name}</strong>
           <span className="muted"> · {user.whatsapp_number}</span>
           {user.email && <span className="muted"> · {user.email}</span>}
+          {user.link_preference === "hub" && (
+            <span className="muted"> · hub{user.store_name ? ` (${user.store_name})` : ""}</span>
+          )}
         </div>
         <span className="muted">
           {user.tracking_ids.length} tag{user.tracking_ids.length === 1 ? "" : "s"}{" "}
@@ -172,6 +179,25 @@ function UserCard({
             />
             <button className="primary" onClick={saveUser}>Save</button>
             <button className="danger" onClick={removeUser}>Delete user</button>
+          </div>
+
+          <h3>Reply format</h3>
+          <div className="form-row">
+            <select
+              value={edit.link_preference}
+              onChange={(e) =>
+                setEdit({ ...edit, link_preference: e.target.value as "direct" | "hub" })
+              }
+            >
+              <option value="direct">Direct Amazon link (default)</option>
+              <option value="hub">Hub article page</option>
+            </select>
+            <input
+              placeholder="Store name shown on articles (optional)"
+              value={edit.store_name}
+              onChange={(e) => setEdit({ ...edit, store_name: e.target.value })}
+            />
+            <button className="primary" onClick={saveUser}>Save</button>
           </div>
 
           <h3>Tracking IDs</h3>

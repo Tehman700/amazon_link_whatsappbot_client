@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from .. import models, schemas
+from .. import hub, models, schemas
 from ..database import get_db
 from ..resolver import resolve_all
 from ..rewriter import find_urls, process_text
@@ -29,6 +29,15 @@ async def process_message(payload: schemas.ProcessRequest, db: Session = Depends
     new_text, replacements, skipped = process_text(
         payload.text, domain_map, tags, resolved
     )
+
+    # Hub mode (opt-in per user): swap direct tagged links for article-page
+    # links on the website. Fail-safe by design — any problem on the website
+    # side leaves new_text exactly as built above (direct tagged links).
+    if replacements and getattr(user, "link_preference", "direct") == "hub":
+        try:
+            new_text = await hub.swap_links_for_articles(new_text, replacements, user)
+        except Exception:
+            pass
 
     return schemas.ProcessResponse(
         text=new_text,

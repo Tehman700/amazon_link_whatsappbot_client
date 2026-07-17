@@ -54,6 +54,8 @@ export default function OverviewView({ users, marketplaces, refresh, onError }: 
           name: user.name,
           whatsapp_number: user.whatsapp_number,
           email: user.email,
+          link_preference: user.link_preference ?? "direct",
+          store_name: user.store_name ?? "",
           [field]: field === "email" ? value || null : value,
         });
       }

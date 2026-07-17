@@ -7,6 +7,13 @@ original client spec; this file records everything built and deployed since.
 commit: `11db95e` (SCALE FIX part 2). All three tiers auto-deploy on `git push`.
 
 ### Quick history (newest first)
+- **Hub integration (phase 2)** — per-user `link_preference` ('direct' default /
+  'hub') + `store_name` on users (idempotent startup ALTERs in main.py);
+  hub-mode replies swap tagged links for article URLs via the Beast Affiliates
+  website's mint API (`app/hub.py`; env `HUB_API_URL` + `HUB_SERVICE_KEY` in the
+  API Vercel project — unset = feature off). Fail-safe: any mint failure leaves
+  the direct tagged link. Admin dashboard Users tab has the preference/store
+  controls. See [PORTAL-PLAN.md](PORTAL-PLAN.md).
 - **SCALE FIX pt2** (`11db95e`) — adaptive pacing, per-chat fairness, random typing.
 - **SCALE FIX pt1** (`43b3320`) — retry store (fixes "waiting for this message"),
   incoming dedupe (fixes double replies), paced reply queue.
@@ -233,8 +240,9 @@ constants if the registered number changes.
   the $0-forever destination; Lightsail/Hetzner ~$5/mo is the boring-correct one.
 - No LLM/AI anywhere — deterministic by spec. No PA-API, no scraping product data.
 - render.yaml is a leftover from an abandoned Render deployment option (unused).
-- `hub-prototype/` (gitignored, local only) — an unrelated hub-page experiment;
-  not part of the deployed product.
+- `hub-prototype/` (gitignored, local only) — WORKING prototype for the planned
+  user-portal + hub article pages module. Full agreed design, decisions, and
+  hosting plan: [PORTAL-PLAN.md](PORTAL-PLAN.md).
 
 ## Agreed scale-up test plan (2026-07-13, not yet executed)
 

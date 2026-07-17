@@ -39,6 +39,8 @@ class UserBase(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     whatsapp_number: str = Field(min_length=5, max_length=32)
     email: str | None = None
+    link_preference: str = Field(default="direct", pattern="^(direct|hub)$")
+    store_name: str = Field(default="", max_length=120)
 
 
 class UserCreate(UserBase):

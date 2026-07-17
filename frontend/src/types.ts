@@ -17,6 +17,8 @@ export interface User {
   name: string;
   whatsapp_number: string;
   email: string | null;
+  link_preference: "direct" | "hub";
+  store_name: string;
   tracking_ids: TrackingID[];
 }
 
