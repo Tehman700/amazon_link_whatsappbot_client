@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Base, SessionLocal, engine
 from app.models import Marketplace
-from app.routers import auth, marketplaces, process, users
+from app.routers import auth, marketplaces, process, service, users
 from app.routers.auth import require_admin
 from app.seed import seed
 
@@ -57,6 +57,8 @@ app.add_middleware(
 app.include_router(auth.router)
 # /process-message stays open — the WhatsApp adapter calls it server-to-server.
 app.include_router(process.router)
+# /service/* — portal server-to-server, guarded by HUB_SERVICE_KEY inside.
+app.include_router(service.router)
 # Admin CRUD requires a login token.
 app.include_router(users.router, dependencies=[Depends(require_admin)])
 app.include_router(marketplaces.router, dependencies=[Depends(require_admin)])
