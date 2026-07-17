@@ -8,14 +8,19 @@ entirely (safe pre-config deploy state).
 """
 
 import os
+import time
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
 
 HUB_API_URL = os.getenv("HUB_API_URL", "").rstrip("/")
 HUB_SERVICE_KEY = os.getenv("HUB_SERVICE_KEY", "")
-# Mint can include a first-time scrape on the website side; keep headroom.
-HUB_TIMEOUT_SECONDS = float(os.getenv("HUB_TIMEOUT_SECONDS", "25"))
+# The bot API runs inside a ~10s Vercel function. The whole hub swap must
+# finish well inside that so a slow first-time scrape on the website side
+# degrades to the direct link instead of killing the reply entirely.
+# (Cached products mint in <1s; only brand-new products can be slow — the
+# website keeps scraping/caching server-side, so the NEXT share is instant.)
+HUB_BUDGET_SECONDS = float(os.getenv("HUB_BUDGET_SECONDS", "7.0"))
 
 
 def enabled() -> bool:
@@ -34,9 +39,13 @@ async def swap_links_for_articles(text: str, replacements: list, user) -> str:
 
     store_name = (getattr(user, "store_name", "") or "").strip()
     sender = getattr(user, "whatsapp_number", "") or ""
+    deadline = time.monotonic() + HUB_BUDGET_SECONDS
 
-    async with httpx.AsyncClient(timeout=HUB_TIMEOUT_SECONDS) as client:
+    async with httpx.AsyncClient() as client:
         for r in replacements:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0.5:
+                break  # budget spent — remaining links stay direct
             try:
                 resp = await client.post(
                     f"{HUB_API_URL}/api/links",
@@ -47,6 +56,7 @@ async def swap_links_for_articles(text: str, replacements: list, user) -> str:
                         "sender": sender,
                     },
                     headers={"X-Service-Key": HUB_SERVICE_KEY},
+                    timeout=remaining,
                 )
                 if resp.status_code != 200:
                     continue
