@@ -24,6 +24,20 @@ class User(Base):
     )
 
 
+class LinkedNumber(Base):
+    """Extra WhatsApp numbers linked to a user via the portal's code handshake.
+    A linked number behaves exactly like the primary: same tags, preference,
+    and attribution. Cap: 3 numbers total per user (primary + 2 linked)."""
+
+    __tablename__ = "linked_numbers"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    whatsapp_number: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+
+    user: Mapped["User"] = relationship()
+
+
 class Marketplace(Base):
     __tablename__ = "marketplaces"
 

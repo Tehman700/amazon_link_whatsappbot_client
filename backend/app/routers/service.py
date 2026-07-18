@@ -64,3 +64,37 @@ def update_preferences(number: str, payload: PreferencesIn, db: Session = Depend
         "link_preference": user.link_preference,
         "store_name": user.store_name,
     }
+
+
+@router.get("/users/{number}/linked", dependencies=[Depends(require_service_key)])
+def list_linked_numbers(number: str, db: Session = Depends(get_db)):
+    user = _find_user(number, db)
+    linked = (
+        db.query(models.LinkedNumber)
+        .filter(models.LinkedNumber.user_id == user.id)
+        .order_by(models.LinkedNumber.id)
+        .all()
+    )
+    return {"primary": user.whatsapp_number,
+            "linked": [ln.whatsapp_number for ln in linked]}
+
+
+@router.delete(
+    "/users/{number}/linked/{linked_number}",
+    dependencies=[Depends(require_service_key)],
+    status_code=204,
+)
+def unlink_number(number: str, linked_number: str, db: Session = Depends(get_db)):
+    user = _find_user(number, db)
+    row = (
+        db.query(models.LinkedNumber)
+        .filter(
+            models.LinkedNumber.user_id == user.id,
+            models.LinkedNumber.whatsapp_number == linked_number.strip(),
+        )
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Linked number not found")
+    db.delete(row)
+    db.commit()

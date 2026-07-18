@@ -27,6 +27,26 @@ def enabled() -> bool:
     return bool(HUB_API_URL)
 
 
+async def claim_link_code(code: str, sender: str) -> str | None:
+    """Ask the website whether `code` is a valid, unexpired linking code.
+    Returns the primary WhatsApp number it belongs to, or None (invalid code,
+    website down, feature unconfigured — all silent no-ops for the caller)."""
+    if not enabled():
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=6.0) as client:
+            resp = await client.post(
+                f"{HUB_API_URL}/api/wa-codes/claim",
+                json={"code": code, "sender": sender},
+                headers={"X-Service-Key": HUB_SERVICE_KEY},
+            )
+        if resp.status_code != 200:
+            return None
+        return (resp.json() or {}).get("primary_number") or None
+    except Exception:
+        return None
+
+
 def _tag_of(url: str) -> str:
     return (parse_qs(urlsplit(url).query).get("tag") or [""])[0]
 
