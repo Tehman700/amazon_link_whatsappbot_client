@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from .. import hub, models, schemas
 from ..database import get_db
 from ..resolver import resolve_all
-from ..rewriter import find_urls, process_text
+from ..rewriter import build_from_asin, find_urls, process_text
 
 router = APIRouter(tags=["process"])
 
@@ -96,6 +96,13 @@ async def process_message(payload: schemas.ProcessRequest, db: Session = Depends
     new_text, replacements, skipped = process_text(
         payload.text, domain_map, tags, resolved
     )
+
+    # Fallback: message had no link at all, but a labelled ASIN + market —
+    # build the tagged link and prepend it. Silent unless everything resolves.
+    if not replacements:
+        fb_text, fb_replacements = build_from_asin(payload.text, domain_map, tags)
+        if fb_replacements:
+            new_text, replacements = fb_text, fb_replacements
 
     # Hub mode (opt-in per user): swap direct tagged links for article-page
     # links on the website. Fail-safe by design — any problem on the website

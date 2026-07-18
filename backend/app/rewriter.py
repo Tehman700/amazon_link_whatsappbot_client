@@ -100,6 +100,93 @@ def rewrite_url(url: str, tag: str) -> str:
     return urlunsplit((parts.scheme, parts.netloc, parts.path, query, parts.fragment))
 
 
+# ---- ASIN + Market fallback (messages with no link at all) ----
+#
+# Some senders forward a product with NO url, but a labelled ASIN and market,
+# e.g.  "Market:UK ... ASIN: B0H3ZGX6YQ ...". When the normal pipeline finds
+# no link to rewrite, we reconstruct the Amazon link from (marketplace, ASIN)
+# and prepend it. Requires BOTH a confident ASIN and a resolvable market AND
+# the sender having a tag for it — otherwise stay silent (no guessing).
+
+ASIN_LABELED_RE = re.compile(r"\bASIN\b\s*[:#\-]?\s*([A-Za-z0-9]{10})\b", re.IGNORECASE)
+ASIN_BARE_RE = re.compile(r"\bB0[A-Z0-9]{8}\b")
+MARKET_RE = re.compile(r"\bmarket\b\s*[:#\-]?\s*([A-Za-z][A-Za-z .]{0,30})", re.IGNORECASE)
+
+# Common ways senders name a marketplace that aren't the DB code or full name.
+MARKET_ALIASES = {
+    "usa": "US", "america": "US", "unitedstates": "US", "us": "US",
+    "uk": "UK", "unitedkingdom": "UK", "britain": "UK", "england": "UK",
+    "germany": "DE", "deutschland": "DE",
+    "france": "FR", "italy": "IT", "italia": "IT", "spain": "ES", "espana": "ES",
+    "netherlands": "NL", "holland": "NL", "australia": "AU", "canada": "CA",
+}
+
+
+def _norm(s: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", s.lower())
+
+
+def extract_asin(text: str) -> str | None:
+    """First labelled ASIN (uppercased), else a bare B0######## token."""
+    m = ASIN_LABELED_RE.search(text)
+    if m:
+        return m.group(1).upper()
+    m = ASIN_BARE_RE.search(text)
+    return m.group(0).upper() if m else None
+
+
+def _resolve_market(text: str, market_index: dict[str, object]):
+    """Match the 'Market: X' line against marketplaces by code / name / alias."""
+    m = MARKET_RE.search(text)
+    if not m:
+        return None
+    raw = m.group(1).strip()
+    for key in (_norm(raw), _norm(raw.split()[0]) if raw.split() else ""):
+        if not key:
+            continue
+        if key in market_index:
+            return market_index[key]
+        alias = MARKET_ALIASES.get(key)
+        if alias and alias.lower() in market_index:
+            return market_index[alias.lower()]
+    return None
+
+
+def build_from_asin(
+    text: str,
+    domain_map: dict[str, object],
+    tags_by_marketplace_id: dict[int, str],
+) -> tuple[str, list[Replacement]]:
+    """When the message has no link: build a tagged Amazon link from a
+    labelled ASIN + market and prepend it. Returns ("", []) to stay silent
+    unless ASIN, market, and the sender's tag for that market all resolve."""
+    asin = extract_asin(text)
+    if not asin:
+        return "", []
+
+    market_index: dict[str, object] = {}
+    for mp in domain_map.values():
+        market_index[_norm(mp.code)] = mp
+        market_index[_norm(mp.name)] = mp
+    marketplace = _resolve_market(text, market_index)
+    if marketplace is None:
+        return "", []
+
+    tag = tags_by_marketplace_id.get(marketplace.id)
+    if tag is None:
+        return "", []
+
+    link = urlunsplit(
+        ("https", f"www.{marketplace.domain}", f"/dp/{asin}",
+         urlencode([("tag", tag)], quote_via=quote), "")
+    )
+    new_text = f"{link}\n{text}"
+    replacement = Replacement(
+        original=f"ASIN:{asin}", rewritten=link, marketplace_code=marketplace.code
+    )
+    return new_text, [replacement]
+
+
 def process_text(
     text: str,
     domain_map: dict[str, object],
