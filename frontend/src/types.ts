@@ -39,3 +39,29 @@ export interface ProcessResponse {
   replacements: Replacement[];
   skipped: SkippedLink[];
 }
+
+export interface PortalAdminAccount {
+  id: number;
+  username: string;
+  whatsapp_number: string;
+  created_at: string;
+  disabled: boolean;
+  avatar: string;
+  store_slug: string;
+  store_enabled: boolean;
+  bank: string;
+  account_title: string;
+  account_number: string;
+  links: number;
+  views: number;
+  clicks: number;
+  name: string;
+  link_preference: string;
+  store_name: string;
+  linked_numbers: string[];
+}
+
+export interface PortalAdminData {
+  accounts: PortalAdminAccount[];
+  not_signed_up: { name: string; whatsapp_number: string }[];
+}

@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Base, SessionLocal, engine
 from app.models import Marketplace
-from app.routers import auth, marketplaces, process, service, users
+from app.routers import auth, marketplaces, portal_admin, process, service, users
 from app.routers.auth import require_admin
 from app.seed import seed
 
@@ -62,6 +62,7 @@ app.include_router(service.router)
 # Admin CRUD requires a login token.
 app.include_router(users.router, dependencies=[Depends(require_admin)])
 app.include_router(marketplaces.router, dependencies=[Depends(require_admin)])
+app.include_router(portal_admin.router, dependencies=[Depends(require_admin)])
 
 
 @app.get("/health")

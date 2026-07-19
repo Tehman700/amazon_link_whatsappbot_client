@@ -387,3 +387,62 @@ td.row-actions {
     gap: var(--sp-lg);
   }
 }
+
+/* --- Portal administration (red) tab --- */
+nav button.danger-tab {
+  color: #c0392b;
+}
+nav button.danger-tab:hover {
+  background: #fdf1ec;
+  color: #a93226;
+}
+nav button.danger-tab.active {
+  background: #c0392b;
+  color: #fff;
+}
+.subtabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+.subtabs button {
+  border: 1px solid var(--border, #e5e4e7);
+  background: #fff;
+  padding: 8px 18px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+}
+.subtabs button.active {
+  background: #c0392b;
+  border-color: #c0392b;
+  color: #fff;
+}
+.avatar-sm {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  object-fit: cover;
+  vertical-align: middle;
+  background: #f2eef5;
+  display: inline-grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 13px;
+}
+.temp-pw {
+  background: #eefaf2;
+  border: 1px solid #bfe3d0;
+  color: #1e7a45;
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin-bottom: 14px;
+  font-size: 14px;
+}
+.temp-pw code {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}

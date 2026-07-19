@@ -91,3 +91,21 @@ export const api = {
       body: JSON.stringify({ sender, text }),
     }),
 };
+
+// --- Portal administration (gateway to the website's admin endpoints) ---
+import type { PortalAdminData } from "./types";
+
+export const portalAdmin = {
+  data: () => request<PortalAdminData>("/portal-admin/accounts"),
+  resetPassword: (id: number) =>
+    request<{ temp_password: string; username: string }>(
+      `/portal-admin/accounts/${id}/reset-password`, { method: "POST" }),
+  setDisabled: (id: number, disabled: boolean) =>
+    request<{ disabled: boolean }>(`/portal-admin/accounts/${id}/disabled`, {
+      method: "POST", body: JSON.stringify({ disabled }),
+    }),
+  deleteAccount: (id: number) =>
+    request<{ ok: boolean }>(`/portal-admin/accounts/${id}`, { method: "DELETE" }),
+  unlinkNumber: (number: string) =>
+    request<void>(`/portal-admin/linked/${encodeURIComponent(number)}`, { method: "DELETE" }),
+};

@@ -6,6 +6,7 @@ import UsersView from "./views/UsersView";
 import MarketplacesView from "./views/MarketplacesView";
 import TestView from "./views/TestView";
 import LoginView from "./views/LoginView";
+import PortalAdminView from "./views/PortalAdminView";
 import "./App.css";
 
 type Tab = "overview" | "users" | "marketplaces" | "test";
@@ -13,6 +14,20 @@ type Tab = "overview" | "users" | "marketplaces" | "test";
 export default function App() {
   const [authed, setAuthed] = useState(hasToken());
   const [tab, setTab] = useState<Tab>("overview");
+  // Real URL route: "/portal-admin" hosts the portal administration page.
+  const [route, setRoute] = useState(window.location.pathname);
+
+  useEffect(() => {
+    const onPop = () => setRoute(window.location.pathname);
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  const go = (path: string) => {
+    window.history.pushState({}, "", path);
+    setRoute(path);
+  };
+  const onPortalAdmin = route === "/portal-admin";
   const [users, setUsers] = useState<User[]>([]);
   const [marketplaces, setMarketplaces] = useState<Marketplace[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -57,22 +72,34 @@ export default function App() {
         <h1>Amazon Affiliate Bot — Admin</h1>
         <nav>
           <button
-            className={tab === "overview" ? "active" : ""}
-            onClick={() => setTab("overview")}
+            className={!onPortalAdmin && tab === "overview" ? "active" : ""}
+            onClick={() => { go("/"); setTab("overview"); }}
           >
             Overview
           </button>
-          <button className={tab === "users" ? "active" : ""} onClick={() => setTab("users")}>
+          <button
+            className={!onPortalAdmin && tab === "users" ? "active" : ""}
+            onClick={() => { go("/"); setTab("users"); }}
+          >
             Users
           </button>
           <button
-            className={tab === "marketplaces" ? "active" : ""}
-            onClick={() => setTab("marketplaces")}
+            className={!onPortalAdmin && tab === "marketplaces" ? "active" : ""}
+            onClick={() => { go("/"); setTab("marketplaces"); }}
           >
             Marketplaces
           </button>
-          <button className={tab === "test" ? "active" : ""} onClick={() => setTab("test")}>
+          <button
+            className={!onPortalAdmin && tab === "test" ? "active" : ""}
+            onClick={() => { go("/"); setTab("test"); }}
+          >
             Test message
+          </button>
+          <button
+            className={`danger-tab ${onPortalAdmin ? "active" : ""}`}
+            onClick={() => go("/portal-admin")}
+          >
+            Portal administration
           </button>
           <button onClick={logout}>Log out</button>
         </nav>
@@ -84,7 +111,9 @@ export default function App() {
         </div>
       )}
 
-      {loaded && !error && (
+      {onPortalAdmin && <PortalAdminView />}
+
+      {!onPortalAdmin && loaded && !error && (
         <>
           {tab === "overview" && (
             <OverviewView

@@ -3,6 +3,7 @@
     {
       "source": "/api/:path*",
       "destination": "https://amazon-link-whatsappbot-client.vercel.app/:path*"
-    }
+    },
+    { "source": "/portal-admin", "destination": "/index.html" }
   ]
 }
