@@ -88,3 +88,53 @@ export interface PerformanceData {
   per_user: PerfUser[];
   series: { date: string; views: number; clicks: number }[];
 }
+
+export interface EarningsUserRow {
+  account_id: number;
+  username: string;
+  whatsapp_number: string;
+  name: string;
+  rate: number;
+  custom_rate: number | null;
+  earned: number;
+  paid: number;
+  balance: number;
+  entries_count: number;
+}
+
+export interface EarningsOverview {
+  settings: { default_rate: number; min_payout: number };
+  users: EarningsUserRow[];
+}
+
+export interface EarningsEntryOut {
+  id: number;
+  kind: string;
+  gross_amount: number;
+  rate_applied: number;
+  net_amount: number;
+  label: string;
+  note: string;
+  created_at: string;
+}
+
+export interface PayoutOut {
+  id: number;
+  amount: number;
+  method: string;
+  note: string;
+  paid_at: string;
+}
+
+export interface EarningsDetailData {
+  username: string;
+  rate: number;
+  custom_rate: number | null;
+  payout_method: string;
+  earned: number;
+  paid: number;
+  balance: number;
+  entries_count: number;
+  entries: EarningsEntryOut[];
+  payouts: PayoutOut[];
+}

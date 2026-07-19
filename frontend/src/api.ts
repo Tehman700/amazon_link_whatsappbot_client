@@ -93,7 +93,13 @@ export const api = {
 };
 
 // --- Portal administration (gateway to the website's admin endpoints) ---
-import type { PerformanceData, PortalAdminData, PortalAdminLink } from "./types";
+import type {
+  EarningsDetailData,
+  EarningsOverview,
+  PerformanceData,
+  PortalAdminData,
+  PortalAdminLink,
+} from "./types";
 
 export const portalAdmin = {
   data: () => request<PortalAdminData>("/portal-admin/accounts"),
@@ -112,4 +118,24 @@ export const portalAdmin = {
     request<{ links: PortalAdminLink[] }>(`/portal-admin/accounts/${id}/links`),
   performance: (days: number) =>
     request<PerformanceData>(`/portal-admin/performance?days=${days}`),
+
+  earnings: () => request<EarningsOverview>("/portal-admin/earnings"),
+  earningsSettings: (body: { default_rate?: number; min_payout?: number }) =>
+    request<{ default_rate: number; min_payout: number }>(
+      "/portal-admin/earnings/settings", { method: "PUT", body: JSON.stringify(body) }),
+  setRate: (id: number, rate: number | null) =>
+    request<{ rate: number; custom_rate: number | null }>(
+      `/portal-admin/earnings/${id}/rate`, { method: "PUT", body: JSON.stringify({ rate }) }),
+  earningsDetail: (id: number) =>
+    request<EarningsDetailData>(`/portal-admin/earnings/${id}`),
+  addEntry: (id: number, body: object) =>
+    request<{ id: number; net_amount: number }>(
+      `/portal-admin/earnings/${id}/entries`, { method: "POST", body: JSON.stringify(body) }),
+  deleteEntry: (id: number, entryId: number) =>
+    request<{ ok: boolean }>(`/portal-admin/earnings/${id}/entries/${entryId}`, { method: "DELETE" }),
+  addPayout: (id: number, body: object) =>
+    request<{ id: number }>(
+      `/portal-admin/earnings/${id}/payouts`, { method: "POST", body: JSON.stringify(body) }),
+  deletePayout: (id: number, payoutId: number) =>
+    request<{ ok: boolean }>(`/portal-admin/earnings/${id}/payouts/${payoutId}`, { method: "DELETE" }),
 };

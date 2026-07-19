@@ -108,3 +108,54 @@ def admin_unlink_number(number: str, db: Session = Depends(get_db)):
         raise HTTPException(404, "Linked number not found")
     db.delete(row)
     db.commit()
+
+
+# ------------------------------------------------------------- earnings
+
+
+@router.get("/earnings")
+def earnings_overview(db: Session = Depends(get_db)):
+    data = _website("GET", "/api/admin/earnings")
+    users_by_number = {u.whatsapp_number: u for u in db.query(models.User).all()}
+    for row in data.get("users", []):
+        user = users_by_number.get(row["whatsapp_number"])
+        row["name"] = user.name if user else ""
+    return data
+
+
+@router.put("/earnings/settings")
+async def earnings_settings(request: Request):
+    return _website("PUT", "/api/admin/earnings/settings", await request.json())
+
+
+@router.put("/earnings/{account_id}/rate")
+async def earnings_rate(account_id: int, request: Request):
+    return _website("PUT", f"/api/admin/earnings/{account_id}/rate",
+                    await request.json())
+
+
+@router.get("/earnings/{account_id}")
+def earnings_detail(account_id: int):
+    return _website("GET", f"/api/admin/earnings/{account_id}")
+
+
+@router.post("/earnings/{account_id}/entries")
+async def earnings_add_entry(account_id: int, request: Request):
+    return _website("POST", f"/api/admin/earnings/{account_id}/entries",
+                    await request.json())
+
+
+@router.delete("/earnings/{account_id}/entries/{entry_id}")
+def earnings_delete_entry(account_id: int, entry_id: int):
+    return _website("DELETE", f"/api/admin/earnings/{account_id}/entries/{entry_id}")
+
+
+@router.post("/earnings/{account_id}/payouts")
+async def earnings_add_payout(account_id: int, request: Request):
+    return _website("POST", f"/api/admin/earnings/{account_id}/payouts",
+                    await request.json())
+
+
+@router.delete("/earnings/{account_id}/payouts/{payout_id}")
+def earnings_delete_payout(account_id: int, payout_id: int):
+    return _website("DELETE", f"/api/admin/earnings/{account_id}/payouts/{payout_id}")

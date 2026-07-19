@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { portalAdmin } from "../api";
 import type {
+  EarningsDetailData,
+  EarningsOverview,
   PerformanceData,
   PortalAdminAccount,
   PortalAdminData,
   PortalAdminLink,
 } from "../types";
 
-type SubTab = "accounts" | "linked" | "payouts" | "performance";
+type SubTab = "accounts" | "linked" | "payouts" | "performance" | "earnings";
 
 export default function PortalAdminView() {
   const [sub, setSub] = useState<SubTab>("accounts");
@@ -39,6 +41,7 @@ export default function PortalAdminView() {
             ["linked", "Linked numbers"],
             ["payouts", "Payout details"],
             ["performance", "Overall performance"],
+            ["earnings", "Earnings"],
           ] as [SubTab, string][]
         ).map(([key, label]) => (
           <button
@@ -77,6 +80,7 @@ export default function PortalAdminView() {
       {sub === "linked" && <LinkedTab data={data} refresh={load} onError={setError} />}
       {sub === "payouts" && <PayoutsTab accounts={data.accounts} />}
       {sub === "performance" && <PerformanceTab />}
+      {sub === "earnings" && <EarningsTab />}
     </section>
   );
 }
@@ -659,5 +663,325 @@ function TrendChart({ series }: { series: { date: string; views: number; clicks:
         ) : null,
       )}
     </svg>
+  );
+}
+
+
+/* ----------------------------------------------------------- earnings */
+
+function fmtRs(n: number) {
+  return "Rs " + n.toLocaleString();
+}
+
+function EarningsTab() {
+  const [data, setData] = useState<EarningsOverview | null>(null);
+  const [detailId, setDetailId] = useState<number | null>(null);
+  const [error, setError] = useState("");
+  const [defRate, setDefRate] = useState("");
+  const [minPayout, setMinPayout] = useState("");
+
+  const load = useCallback(() => {
+    portalAdmin
+      .earnings()
+      .then((d) => {
+        setData(d);
+        setDefRate(String(d.settings.default_rate));
+        setMinPayout(String(d.settings.min_payout));
+        setError("");
+      })
+      .catch((e) => setError((e as Error).message));
+  }, []);
+
+  useEffect(load, [load]);
+
+  if (error) return <div className="error-box">{error}</div>;
+  if (!data) return <p className="muted">Loading earnings…</p>;
+
+  if (detailId !== null) {
+    return <EarningsDetail accountId={detailId} back={() => { setDetailId(null); load(); }} />;
+  }
+
+  const saveSettings = async () => {
+    try {
+      await portalAdmin.earningsSettings({
+        default_rate: Number(defRate),
+        min_payout: Number(minPayout),
+      });
+      load();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  const editRate = async (row: { account_id: number; username: string; rate: number }) => {
+    const raw = prompt(
+      `Commission rate %% for @${row.username} (0-100).\nLeave empty to use the default rate.`,
+      String(row.rate),
+    );
+    if (raw === null) return;
+    try {
+      await portalAdmin.setRate(row.account_id, raw.trim() === "" ? null : Number(raw));
+      load();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  return (
+    <>
+      <div className="card">
+        <h2>Settings</h2>
+        <div className="form-row">
+          <label className="muted" style={{ fontSize: 13 }}>
+            Default commission rate (%)
+            <input value={defRate} onChange={(e) => setDefRate(e.target.value)} style={{ display: "block", marginTop: 4 }} />
+          </label>
+          <label className="muted" style={{ fontSize: 13 }}>
+            Minimum payout (PKR)
+            <input value={minPayout} onChange={(e) => setMinPayout(e.target.value)} style={{ display: "block", marginTop: 4 }} />
+          </label>
+          <button className="primary" onClick={saveSettings} style={{ alignSelf: "flex-end" }}>
+            Save settings
+          </button>
+        </div>
+      </div>
+
+      <div className="card">
+        <h2>Users</h2>
+        <p className="muted" style={{ marginTop: -6, marginBottom: 10, fontSize: 13 }}>
+          Click Manage to add earnings entries and record payouts.
+        </p>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Rate</th>
+                <th>Earned (share)</th>
+                <th>Paid</th>
+                <th>Balance</th>
+                <th>Entries</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.users.map((u) => (
+                <tr key={u.account_id}>
+                  <td>
+                    <strong>@{u.username}</strong>{" "}
+                    <span className="muted">({u.name})</span>
+                  </td>
+                  <td>
+                    {u.rate}%{" "}
+                    <span className="muted" style={{ fontSize: 11 }}>
+                      {u.custom_rate === null ? "(default)" : "(custom)"}
+                    </span>
+                  </td>
+                  <td>{fmtRs(u.earned)}</td>
+                  <td>{fmtRs(u.paid)}</td>
+                  <td><strong>{fmtRs(u.balance)}</strong></td>
+                  <td>{u.entries_count}</td>
+                  <td className="row-actions">
+                    <button className="cell-btn" onClick={() => editRate(u)}>
+                      Set rate
+                    </button>
+                    <button className="cell-btn" onClick={() => setDetailId(u.account_id)}>
+                      Manage
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {data.users.length === 0 && <p className="muted">No portal accounts yet.</p>}
+      </div>
+    </>
+  );
+}
+
+function EarningsDetail({ accountId, back }: { accountId: number; back: () => void }) {
+  const [data, setData] = useState<EarningsDetailData | null>(null);
+  const [error, setError] = useState("");
+  const [gross, setGross] = useState("");
+  const [label, setLabel] = useState("");
+  const [note, setNote] = useState("");
+  const [otherKind, setOtherKind] = useState<"bonus" | "adjustment">("bonus");
+  const [otherAmount, setOtherAmount] = useState("");
+  const [otherLabel, setOtherLabel] = useState("");
+  const [payAmount, setPayAmount] = useState("");
+  const [payNote, setPayNote] = useState("");
+
+  const load = useCallback(() => {
+    portalAdmin
+      .earningsDetail(accountId)
+      .then((d) => {
+        setData(d);
+        setError("");
+      })
+      .catch((e) => setError((e as Error).message));
+  }, [accountId]);
+
+  useEffect(load, [load]);
+
+  if (error) return <div className="error-box">{error}</div>;
+  if (!data) return <p className="muted">Loading…</p>;
+
+  const preview = gross && !isNaN(Number(gross))
+    ? Math.round((Number(gross) * data.rate) / 100)
+    : null;
+
+  const addEarning = async () => {
+    try {
+      await portalAdmin.addEntry(accountId, {
+        kind: "earning", gross_amount: Number(gross), label, note,
+      });
+      setGross(""); setLabel(""); setNote("");
+      load();
+    } catch (e) { setError((e as Error).message); }
+  };
+
+  const addOther = async () => {
+    try {
+      await portalAdmin.addEntry(accountId, {
+        kind: otherKind, net_amount: Number(otherAmount), label: otherLabel,
+      });
+      setOtherAmount(""); setOtherLabel("");
+      load();
+    } catch (e) { setError((e as Error).message); }
+  };
+
+  const addPayout = async () => {
+    try {
+      await portalAdmin.addPayout(accountId, { amount: Number(payAmount), note: payNote });
+      setPayAmount(""); setPayNote("");
+      load();
+    } catch (e) { setError((e as Error).message); }
+  };
+
+  const delEntry = async (id: number) => {
+    if (!confirm("Delete this entry? Balances recalculate.")) return;
+    try { await portalAdmin.deleteEntry(accountId, id); load(); }
+    catch (e) { setError((e as Error).message); }
+  };
+
+  const delPayout = async (id: number) => {
+    if (!confirm("Delete this payout record? Balances recalculate.")) return;
+    try { await portalAdmin.deletePayout(accountId, id); load(); }
+    catch (e) { setError((e as Error).message); }
+  };
+
+  return (
+    <>
+      <div className="card">
+        <button className="cell-btn" onClick={back}>← Back to earnings</button>
+        <h2 style={{ marginTop: 12 }}>@{data.username}</h2>
+        <p className="muted" style={{ fontSize: 13 }}>
+          Rate: <strong>{data.rate}%</strong>{" "}
+          {data.custom_rate === null ? "(default)" : "(custom)"}
+          {data.payout_method ? <> · Payout: {data.payout_method}</> : " · No payout details saved"}
+        </p>
+        <div className="stats">
+          <div className="stat"><div className="stat-number">{fmtRs(data.earned)}</div>Earned (share)</div>
+          <div className="stat"><div className="stat-number">{fmtRs(data.paid)}</div>Paid out</div>
+          <div className="stat"><div className="stat-number">{fmtRs(data.balance)}</div>Pending</div>
+        </div>
+      </div>
+
+      <div className="card">
+        <h2>Add earning</h2>
+        <p className="muted" style={{ marginTop: -6, fontSize: 13 }}>
+          Enter the GROSS amount (PKR) this user's tracking IDs earned — the
+          system applies their {data.rate}% share automatically.
+        </p>
+        <div className="form-row">
+          <input placeholder="Gross amount (PKR)" value={gross} onChange={(e) => setGross(e.target.value)} />
+          <input placeholder="Label (e.g. July 2026)" value={label} onChange={(e) => setLabel(e.target.value)} />
+          <input placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
+          <button className="primary" onClick={addEarning}>
+            Add{preview !== null ? ` → share ${fmtRs(preview)}` : ""}
+          </button>
+        </div>
+      </div>
+
+      <div className="card">
+        <h2>Add bonus / adjustment</h2>
+        <p className="muted" style={{ marginTop: -6, fontSize: 13 }}>
+          Direct amounts (no rate applied). Adjustments may be negative — e.g.
+          -500 for an Amazon return clawback.
+        </p>
+        <div className="form-row">
+          <select value={otherKind} onChange={(e) => setOtherKind(e.target.value as "bonus" | "adjustment")}>
+            <option value="bonus">Bonus (e.g. referral)</option>
+            <option value="adjustment">Adjustment (+/-)</option>
+          </select>
+          <input placeholder="Amount (PKR)" value={otherAmount} onChange={(e) => setOtherAmount(e.target.value)} />
+          <input placeholder="Label" value={otherLabel} onChange={(e) => setOtherLabel(e.target.value)} />
+          <button className="primary" onClick={addOther}>Add</button>
+        </div>
+      </div>
+
+      <div className="card">
+        <h2>Record payout</h2>
+        <div className="form-row">
+          <input placeholder="Amount (PKR)" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} />
+          <input placeholder="Note (optional)" value={payNote} onChange={(e) => setPayNote(e.target.value)} />
+          <button className="primary" onClick={addPayout}>Record payout</button>
+        </div>
+        {data.payout_method && (
+          <p className="muted" style={{ fontSize: 12 }}>Will be recorded against: {data.payout_method}</p>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>Entries ({data.entries.length})</h2>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Kind</th><th>Label</th><th>Gross</th><th>Rate</th><th>Share</th><th>Date</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.entries.map((e) => (
+                <tr key={e.id}>
+                  <td><span className={`badge ${e.kind === "earning" ? "" : "warn"}`}>{e.kind}</span></td>
+                  <td>{e.label}{e.note ? <span className="muted"> — {e.note}</span> : null}</td>
+                  <td>{e.kind === "earning" ? fmtRs(e.gross_amount) : "—"}</td>
+                  <td>{e.kind === "earning" ? `${e.rate_applied}%` : "—"}</td>
+                  <td><strong>{fmtRs(e.net_amount)}</strong></td>
+                  <td className="muted" style={{ whiteSpace: "nowrap" }}>{new Date(e.created_at).toLocaleDateString()}</td>
+                  <td><button className="danger" onClick={() => delEntry(e.id)}>Delete</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {data.entries.length === 0 && <p className="muted">No entries yet.</p>}
+      </div>
+
+      <div className="card">
+        <h2>Payouts ({data.payouts.length})</h2>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr><th>Amount</th><th>Method</th><th>Note</th><th>Date</th><th></th></tr>
+            </thead>
+            <tbody>
+              {data.payouts.map((pRow) => (
+                <tr key={pRow.id}>
+                  <td><strong>{fmtRs(pRow.amount)}</strong></td>
+                  <td className="muted">{pRow.method || "—"}</td>
+                  <td className="muted">{pRow.note || "—"}</td>
+                  <td className="muted" style={{ whiteSpace: "nowrap" }}>{new Date(pRow.paid_at).toLocaleDateString()}</td>
+                  <td><button className="danger" onClick={() => delPayout(pRow.id)}>Delete</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {data.payouts.length === 0 && <p className="muted">No payouts recorded yet.</p>}
+      </div>
+    </>
   );
 }
