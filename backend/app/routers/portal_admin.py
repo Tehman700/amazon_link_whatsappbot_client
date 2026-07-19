@@ -42,8 +42,7 @@ def _website(method: str, path: str, json_body: dict | None = None) -> dict:
 
 @router.get("/accounts")
 def list_accounts(db: Session = Depends(get_db)):
-    """Portal accounts enriched with bot-side info, plus registered bot
-    users who have not signed up on the portal yet."""
+    """Portal accounts enriched with bot-side info."""
     data = _website("GET", "/api/admin/accounts")
     accounts = data.get("accounts", [])
 
@@ -53,21 +52,24 @@ def list_accounts(db: Session = Depends(get_db)):
     for ln in linked_rows:
         linked_by_user_id.setdefault(ln.user_id, []).append(ln.whatsapp_number)
 
-    signed_up_numbers = set()
     for a in accounts:
         user = users_by_number.get(a["whatsapp_number"])
-        signed_up_numbers.add(a["whatsapp_number"])
         a["name"] = user.name if user else "(not a bot user)"
         a["link_preference"] = user.link_preference if user else "-"
         a["store_name"] = user.store_name if user else ""
         a["linked_numbers"] = linked_by_user_id.get(user.id, []) if user else []
 
-    not_signed_up = [
-        {"name": u.name, "whatsapp_number": n}
-        for n, u in sorted(users_by_number.items())
-        if n not in signed_up_numbers
-    ]
-    return {"accounts": accounts, "not_signed_up": not_signed_up}
+    return {"accounts": accounts}
+
+
+@router.get("/performance")
+def performance(days: int = 30, db: Session = Depends(get_db)):
+    data = _website("GET", f"/api/admin/performance?days={days}")
+    users_by_number = {u.whatsapp_number: u for u in db.query(models.User).all()}
+    for row in data.get("per_user", []):
+        user = users_by_number.get(row["whatsapp_number"])
+        row["name"] = user.name if user else ""
+    return data
 
 
 @router.post("/accounts/{account_id}/reset-password")

@@ -63,5 +63,28 @@ export interface PortalAdminAccount {
 
 export interface PortalAdminData {
   accounts: PortalAdminAccount[];
-  not_signed_up: { name: string; whatsapp_number: string }[];
+}
+
+export interface PortalAdminLink {
+  id: string;
+  marketplace: string;
+  title: string;
+  views: number;
+  clicks: number;
+  created_at: string;
+  article_url: string;
+}
+
+export interface PerfUser {
+  username: string;
+  whatsapp_number: string;
+  name: string;
+  views: number;
+  clicks: number;
+  links: number;
+}
+
+export interface PerformanceData {
+  per_user: PerfUser[];
+  series: { date: string; views: number; clicks: number }[];
 }

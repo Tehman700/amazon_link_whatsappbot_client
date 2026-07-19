@@ -93,7 +93,7 @@ export const api = {
 };
 
 // --- Portal administration (gateway to the website's admin endpoints) ---
-import type { PortalAdminData } from "./types";
+import type { PerformanceData, PortalAdminData, PortalAdminLink } from "./types";
 
 export const portalAdmin = {
   data: () => request<PortalAdminData>("/portal-admin/accounts"),
@@ -108,4 +108,8 @@ export const portalAdmin = {
     request<{ ok: boolean }>(`/portal-admin/accounts/${id}`, { method: "DELETE" }),
   unlinkNumber: (number: string) =>
     request<void>(`/portal-admin/linked/${encodeURIComponent(number)}`, { method: "DELETE" }),
+  accountLinks: (id: number) =>
+    request<{ links: PortalAdminLink[] }>(`/portal-admin/accounts/${id}/links`),
+  performance: (days: number) =>
+    request<PerformanceData>(`/portal-admin/performance?days=${days}`),
 };
