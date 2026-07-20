@@ -1,10 +1,15 @@
 """Client for the Beast Affiliates website's link-mint API (hub articles).
 
-Used only for users whose link_preference is 'hub'. Every failure mode —
-website down, timeout, bad key, product data unavailable — leaves the reply
-exactly as the direct tagged Amazon link, so the live pipeline can never
-break because of this feature. Unset HUB_API_URL disables the feature
-entirely (safe pre-config deploy state).
+An article is published on the website for EVERY rewritten link, regardless
+of the user's link_preference (owner decision 2026-07-20) — so it always
+shows in their portal with its own view/click tracking. The WhatsApp reply
+text is only swapped to the article URL for 'hub' users; 'direct' users keep
+the tagged Amazon link in their reply while the article is still published.
+
+Every failure mode — website down, timeout, bad key, product data
+unavailable — leaves the reply exactly as the direct tagged Amazon link, so
+the live pipeline can never break because of this feature. Unset HUB_API_URL
+disables it entirely (safe pre-config deploy state).
 """
 
 import os
@@ -51,9 +56,14 @@ def _tag_of(url: str) -> str:
     return (parse_qs(urlsplit(url).query).get("tag") or [""])[0]
 
 
-async def swap_links_for_articles(text: str, replacements: list, user) -> str:
-    """Replace each direct tagged Amazon URL in the reply with a hub article
-    URL. Per-link best effort: a link whose mint fails stays direct."""
+async def publish_articles(
+    text: str, replacements: list, user, swap_reply: bool
+) -> str:
+    """Publish an article for every rewritten link. When `swap_reply` is True
+    (hub users) each tagged URL in the reply is replaced with its article URL;
+    when False (direct users) the reply is untouched but the articles are
+    still created. Per-link best effort within a time budget so a slow
+    first-time scrape never delays a reply past the serverless limit."""
     if not enabled() or not replacements:
         return text
 
@@ -65,7 +75,7 @@ async def swap_links_for_articles(text: str, replacements: list, user) -> str:
         for r in replacements:
             remaining = deadline - time.monotonic()
             if remaining <= 0.5:
-                break  # budget spent — remaining links stay direct
+                break  # budget spent — remaining articles skipped this send
             try:
                 resp = await client.post(
                     f"{HUB_API_URL}/api/links",
@@ -81,9 +91,9 @@ async def swap_links_for_articles(text: str, replacements: list, user) -> str:
                 if resp.status_code != 200:
                     continue
                 article_url = (resp.json() or {}).get("article_url", "")
-                if article_url:
+                if article_url and swap_reply:
                     text = text.replace(r.rewritten, article_url)
                     r.rewritten = article_url
             except Exception:
-                continue  # this link stays as the direct tagged URL
+                continue  # article not created this send; reply unaffected
     return text

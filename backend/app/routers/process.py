@@ -104,12 +104,16 @@ async def process_message(payload: schemas.ProcessRequest, db: Session = Depends
         if fb_replacements:
             new_text, replacements = fb_text, fb_replacements
 
-    # Hub mode (opt-in per user): swap direct tagged links for article-page
-    # links on the website. Fail-safe by design — any problem on the website
-    # side leaves new_text exactly as built above (direct tagged links).
-    if replacements and getattr(user, "link_preference", "direct") == "hub":
+    # Always publish an article for every rewritten link so it appears in the
+    # user's portal with its own view/click tracking. Only hub users get the
+    # article URL in their WhatsApp reply; direct users keep the tagged Amazon
+    # link. Fail-safe: any website-side problem leaves new_text as built above.
+    if replacements:
+        swap_reply = getattr(user, "link_preference", "direct") == "hub"
         try:
-            new_text = await hub.swap_links_for_articles(new_text, replacements, user)
+            new_text = await hub.publish_articles(
+                new_text, replacements, user, swap_reply=swap_reply
+            )
         except Exception:
             pass
 
