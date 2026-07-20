@@ -86,6 +86,12 @@ async def set_disabled(account_id: int, request: Request):
     )
 
 
+@router.post("/accounts/{account_id}/orders")
+async def set_orders(account_id: int, request: Request):
+    return _website("POST", f"/api/admin/accounts/{account_id}/orders",
+                    await request.json())
+
+
 @router.delete("/accounts/{account_id}")
 def delete_account(account_id: int):
     return _website("DELETE", f"/api/admin/accounts/{account_id}")
@@ -159,3 +165,14 @@ async def earnings_add_payout(account_id: int, request: Request):
 @router.delete("/earnings/{account_id}/payouts/{payout_id}")
 def earnings_delete_payout(account_id: int, payout_id: int):
     return _website("DELETE", f"/api/admin/earnings/{account_id}/payouts/{payout_id}")
+
+
+@router.post("/earnings/{account_id}/referrals")
+async def earnings_add_referral(account_id: int, request: Request):
+    return _website("POST", f"/api/admin/earnings/{account_id}/referrals",
+                    await request.json())
+
+
+@router.delete("/earnings/{account_id}/referrals/{referral_id}")
+def earnings_delete_referral(account_id: int, referral_id: int):
+    return _website("DELETE", f"/api/admin/earnings/{account_id}/referrals/{referral_id}")

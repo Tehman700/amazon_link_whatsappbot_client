@@ -112,6 +112,10 @@ export const portalAdmin = {
     }),
   deleteAccount: (id: number) =>
     request<{ ok: boolean }>(`/portal-admin/accounts/${id}`, { method: "DELETE" }),
+  setOrders: (id: number, orders: number) =>
+    request<{ orders: number }>(`/portal-admin/accounts/${id}/orders`, {
+      method: "POST", body: JSON.stringify({ orders }),
+    }),
   unlinkNumber: (number: string) =>
     request<void>(`/portal-admin/linked/${encodeURIComponent(number)}`, { method: "DELETE" }),
   accountLinks: (id: number) =>
@@ -138,4 +142,9 @@ export const portalAdmin = {
       `/portal-admin/earnings/${id}/payouts`, { method: "POST", body: JSON.stringify(body) }),
   deletePayout: (id: number, payoutId: number) =>
     request<{ ok: boolean }>(`/portal-admin/earnings/${id}/payouts/${payoutId}`, { method: "DELETE" }),
+  addReferral: (id: number, body: object) =>
+    request<{ id: number }>(
+      `/portal-admin/earnings/${id}/referrals`, { method: "POST", body: JSON.stringify(body) }),
+  deleteReferral: (id: number, referralId: number) =>
+    request<{ ok: boolean }>(`/portal-admin/earnings/${id}/referrals/${referralId}`, { method: "DELETE" }),
 };

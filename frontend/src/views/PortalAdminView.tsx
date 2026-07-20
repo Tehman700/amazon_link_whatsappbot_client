@@ -3,6 +3,7 @@ import { portalAdmin } from "../api";
 import type {
   EarningsDetailData,
   EarningsOverview,
+  EarningsUserRow,
   PerformanceData,
   PortalAdminAccount,
   PortalAdminData,
@@ -121,6 +122,19 @@ function AccountsTab({
     }
   };
 
+  const editOrders = async (a: PortalAdminAccount) => {
+    const raw = prompt(`Number of orders (purchases) for @${a.username}:`, String(a.orders));
+    if (raw === null) return;
+    const n = Number(raw);
+    if (isNaN(n) || n < 0) { onError("Orders must be a number \u2265 0"); return; }
+    try {
+      await portalAdmin.setOrders(a.id, n);
+      refresh();
+    } catch (e) {
+      onError((e as Error).message);
+    }
+  };
+
   const del = async (a: PortalAdminAccount) => {
     if (
       !confirm(
@@ -159,6 +173,7 @@ function AccountsTab({
                 <th>Links</th>
                 <th>Views</th>
                 <th>Clicks</th>
+                <th>Orders</th>
                 <th>Signed up</th>
                 <th>Actions</th>
               </tr>
@@ -209,6 +224,11 @@ function AccountsTab({
                   <td>{a.links}</td>
                   <td>{a.views}</td>
                   <td>{a.clicks}</td>
+                  <td>
+                    <button className="cell-btn" onClick={() => editOrders(a)} title="Set orders">
+                      {a.orders} ✎
+                    </button>
+                  </td>
                   <td className="muted" style={{ whiteSpace: "nowrap" }}>
                     {new Date(a.created_at).toLocaleDateString()}
                   </td>
@@ -698,7 +718,7 @@ function EarningsTab() {
   if (!data) return <p className="muted">Loading earnings…</p>;
 
   if (detailId !== null) {
-    return <EarningsDetail accountId={detailId} back={() => { setDetailId(null); load(); }} />;
+    return <EarningsDetail accountId={detailId} accounts={data.users} back={() => { setDetailId(null); load(); }} />;
   }
 
   const saveSettings = async () => {
@@ -800,7 +820,7 @@ function EarningsTab() {
   );
 }
 
-function EarningsDetail({ accountId, back }: { accountId: number; back: () => void }) {
+function EarningsDetail({ accountId, accounts, back }: { accountId: number; accounts: EarningsUserRow[]; back: () => void }) {
   const [data, setData] = useState<EarningsDetailData | null>(null);
   const [error, setError] = useState("");
   const [gross, setGross] = useState("");
@@ -811,6 +831,11 @@ function EarningsDetail({ accountId, back }: { accountId: number; back: () => vo
   const [otherLabel, setOtherLabel] = useState("");
   const [payAmount, setPayAmount] = useState("");
   const [payNote, setPayNote] = useState("");
+  const [refMode, setRefMode] = useState<"user" | "name">("user");
+  const [refUserId, setRefUserId] = useState("");
+  const [refName, setRefName] = useState("");
+  const [refAmount, setRefAmount] = useState("");
+  const [refNote, setRefNote] = useState("");
 
   const load = useCallback(() => {
     portalAdmin
@@ -857,6 +882,27 @@ function EarningsDetail({ accountId, back }: { accountId: number; back: () => vo
       setPayAmount(""); setPayNote("");
       load();
     } catch (e) { setError((e as Error).message); }
+  };
+
+  const addReferral = async () => {
+    try {
+      const body: Record<string, unknown> = { amount: Number(refAmount), note: refNote };
+      if (refMode === "user") {
+        if (!refUserId) { setError("Pick the referred user"); return; }
+        body.referred_account_id = Number(refUserId);
+      } else {
+        body.referred_name = refName;
+      }
+      await portalAdmin.addReferral(accountId, body);
+      setRefUserId(""); setRefName(""); setRefAmount(""); setRefNote("");
+      load();
+    } catch (e) { setError((e as Error).message); }
+  };
+
+  const delReferral = async (id: number) => {
+    if (!confirm("Delete this referral reward? Balance recalculates.")) return;
+    try { await portalAdmin.deleteReferral(accountId, id); load(); }
+    catch (e) { setError((e as Error).message); }
   };
 
   const delEntry = async (id: number) => {
@@ -919,6 +965,55 @@ function EarningsDetail({ accountId, back }: { accountId: number; back: () => vo
           <input placeholder="Label" value={otherLabel} onChange={(e) => setOtherLabel(e.target.value)} />
           <button className="primary" onClick={addOther}>Add</button>
         </div>
+      </div>
+
+      <div className="card">
+        <h2>Referral rewards ({data.referrals.length})</h2>
+        <p className="muted" style={{ marginTop: -6, fontSize: 13 }}>
+          Reward @{data.username} for referring someone. The amount is added to
+          their earnings balance.
+        </p>
+        <div className="form-row">
+          <select value={refMode} onChange={(e) => setRefMode(e.target.value as "user" | "name")}>
+            <option value="user">Referred a portal user</option>
+            <option value="name">Referred (name)</option>
+          </select>
+          {refMode === "user" ? (
+            <select value={refUserId} onChange={(e) => setRefUserId(e.target.value)}>
+              <option value="">— pick user —</option>
+              {accounts
+                .filter((u) => u.account_id !== accountId)
+                .map((u) => (
+                  <option key={u.account_id} value={u.account_id}>@{u.username}</option>
+                ))}
+            </select>
+          ) : (
+            <input placeholder="Referred person's name" value={refName} onChange={(e) => setRefName(e.target.value)} />
+          )}
+          <input placeholder="Reward (PKR)" value={refAmount} onChange={(e) => setRefAmount(e.target.value)} />
+          <input placeholder="Note (optional)" value={refNote} onChange={(e) => setRefNote(e.target.value)} />
+          <button className="primary" onClick={addReferral}>Add referral</button>
+        </div>
+        {data.referrals.length > 0 && (
+          <div className="table-scroll" style={{ marginTop: 12 }}>
+            <table>
+              <thead>
+                <tr><th>Referred</th><th>Reward</th><th>Note</th><th>Date</th><th></th></tr>
+              </thead>
+              <tbody>
+                {data.referrals.map((r) => (
+                  <tr key={r.id}>
+                    <td>{r.referred_name}</td>
+                    <td><strong>{fmtRs(r.amount)}</strong></td>
+                    <td className="muted">{r.note || "—"}</td>
+                    <td className="muted" style={{ whiteSpace: "nowrap" }}>{new Date(r.created_at).toLocaleDateString()}</td>
+                    <td><button className="danger" onClick={() => delReferral(r.id)}>Delete</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <div className="card">

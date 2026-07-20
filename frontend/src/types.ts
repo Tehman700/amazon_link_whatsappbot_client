@@ -55,6 +55,7 @@ export interface PortalAdminAccount {
   links: number;
   views: number;
   clicks: number;
+  orders: number;
   name: string;
   link_preference: string;
   store_name: string;
@@ -137,4 +138,13 @@ export interface EarningsDetailData {
   entries_count: number;
   entries: EarningsEntryOut[];
   payouts: PayoutOut[];
+  referrals: ReferralOut[];
+}
+
+export interface ReferralOut {
+  id: number;
+  referred_name: string;
+  amount: number;
+  note: string;
+  created_at: string;
 }
