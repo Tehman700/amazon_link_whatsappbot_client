@@ -15,7 +15,13 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from . import hub
 from .rewriter import match_marketplace
+
+# Our own article/redirect links, so a forwarded link gets re-tagged to the
+# new sender instead of being ignored.
+OUR_HOSTS = ("beastaffiliates.com", "beastassociate.com")
+OUR_LINK_RE = re.compile(r"/(?:p|go)/([A-Za-z0-9]{4,8})(?:/|$)")
 
 URL_IN_HTML_RE = re.compile(r"https?://[^\s\"'<>\\]+")
 _TRAILING = ".,;:!?)]}>'\""
@@ -63,6 +69,29 @@ async def _site_specific(
             if r is not None and r.status_code == 200:
                 try:
                     link = (r.json().get("product") or {}).get("Link") or ""
+                except ValueError:
+                    link = ""
+                if link and match_marketplace(_host(link), domain_map):
+                    return link
+
+    # OUR OWN article pages — beastaffiliates.com/p/<id>/<slug> (and the
+    # /go/<id> buy link). A user forwarding another user's article link must
+    # get it re-tagged to themselves, so we look up the underlying product via
+    # the website's resolve API. That endpoint records NO view/click, so the
+    # original creator's stats are untouched.
+    if host.endswith(OUR_HOSTS):
+        m = OUR_LINK_RE.search(parts.path)
+        if m and hub.enabled():
+            try:
+                r = await client.get(
+                    f"{hub.HUB_API_URL}/api/links/{m.group(1)}/resolve",
+                    headers={"X-Service-Key": hub.HUB_SERVICE_KEY},
+                )
+            except httpx.HTTPError:
+                return None
+            if r.status_code == 200:
+                try:
+                    link = (r.json() or {}).get("amazon_url") or ""
                 except ValueError:
                     link = ""
                 if link and match_marketplace(_host(link), domain_map):

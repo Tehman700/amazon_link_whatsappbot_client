@@ -13,10 +13,19 @@ disables it entirely (safe pre-config deploy state).
 """
 
 import os
+import re
 import time
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
+
+# Matches one of OUR article links in the user's original message, so the
+# website can tell "this user forwarded their own article" and return that
+# same article instead of duplicating it.
+OUR_ARTICLE_RE = re.compile(
+    r"https?://(?:www\.)?(?:beastaffiliates|beastassociate)\.com/(?:p|go)/([A-Za-z0-9]{4,8})",
+    re.I,
+)
 
 HUB_API_URL = os.getenv("HUB_API_URL", "").rstrip("/")
 HUB_SERVICE_KEY = os.getenv("HUB_SERVICE_KEY", "")
@@ -76,6 +85,7 @@ async def publish_articles(
             remaining = deadline - time.monotonic()
             if remaining <= 0.5:
                 break  # budget spent — remaining articles skipped this send
+            source = OUR_ARTICLE_RE.search(getattr(r, "original", "") or "")
             try:
                 resp = await client.post(
                     f"{HUB_API_URL}/api/links",
@@ -84,6 +94,7 @@ async def publish_articles(
                         "tag": _tag_of(r.rewritten),
                         "store_name": store_name,
                         "sender": sender,
+                        "source_link_id": source.group(1) if source else "",
                     },
                     headers={"X-Service-Key": HUB_SERVICE_KEY},
                     timeout=remaining,
