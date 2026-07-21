@@ -13,6 +13,8 @@ const emptyForm = { name: "", whatsapp_number: "", email: "" };
 
 export default function UsersView({ users, marketplaces, refresh, onError }: Props) {
   const [form, setForm] = useState(emptyForm);
+  const [autoTags, setAutoTags] = useState(true);
+  const withDefaults = marketplaces.filter((m) => (m.default_tag ?? "").trim());
   const [expanded, setExpanded] = useState<number | null>(null);
 
   const addUser = async () => {
@@ -25,6 +27,7 @@ export default function UsersView({ users, marketplaces, refresh, onError }: Pro
         name: form.name.trim(),
         whatsapp_number: form.whatsapp_number.trim(),
         email: form.email.trim() || null,
+        apply_default_tags: autoTags,
       });
       setForm(emptyForm);
       await refresh();
@@ -55,6 +58,27 @@ export default function UsersView({ users, marketplaces, refresh, onError }: Pro
           />
           <button className="primary" onClick={addUser}>Add</button>
         </div>
+        <label
+          style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, fontSize: 14 }}
+          title="Uses the Default tracking ID set on each marketplace"
+        >
+          <input
+            type="checkbox"
+            checked={autoTags}
+            onChange={(e) => setAutoTags(e.target.checked)}
+            style={{ width: 16, height: 16 }}
+          />
+          Auto-fill tracking IDs from marketplace defaults
+          {withDefaults.length > 0 ? (
+            <span className="muted">
+              ({withDefaults.length} of {marketplaces.length} countries have a default)
+            </span>
+          ) : (
+            <span className="muted">
+              — no defaults set yet, add them in the Marketplaces tab
+            </span>
+          )}
+        </label>
       </div>
 
       {users.map((user) => (
@@ -215,7 +239,23 @@ function UserCard({
               </label>
             ))}
           </div>
-          <button className="primary" onClick={saveTags}>Save tracking IDs</button>
+          <div className="row-actions" style={{ marginTop: 4 }}>
+            <button className="primary" onClick={saveTags}>Save tracking IDs</button>
+            <button
+              onClick={() => {
+                const next = { ...tags };
+                for (const m of marketplaces) {
+                  if (!(next[m.id] ?? "").trim() && (m.default_tag ?? "").trim()) {
+                    next[m.id] = m.default_tag.trim();
+                  }
+                }
+                setTags(next);
+              }}
+              title="Fills only the empty boxes — nothing is saved until you press Save"
+            >
+              Fill empty from defaults
+            </button>
+          </div>
         </div>
       )}
     </div>

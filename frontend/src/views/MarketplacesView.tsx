@@ -8,7 +8,7 @@ interface Props {
   onError: (message: string) => void;
 }
 
-const emptyForm = { code: "", name: "", domain: "" };
+const emptyForm = { code: "", name: "", domain: "", default_tag: "" };
 
 export default function MarketplacesView({ marketplaces, refresh, onError }: Props) {
   const [form, setForm] = useState(emptyForm);
@@ -69,17 +69,27 @@ export default function MarketplacesView({ marketplaces, refresh, onError }: Pro
             value={form.domain}
             onChange={(e) => setForm({ ...form, domain: e.target.value })}
           />
+          <input
+            placeholder="Default tracking ID (optional)"
+            value={form.default_tag}
+            onChange={(e) => setForm({ ...form, default_tag: e.target.value })}
+          />
           <button className="primary" onClick={add}>Add</button>
         </div>
       </div>
 
       <div className="card">
+        <p className="muted" style={{ marginBottom: 10, fontSize: 13 }}>
+          Default tracking IDs are used to pre-fill a new user's tags when you tick
+          "Auto-fill tracking IDs" while adding them. Existing users are never changed.
+        </p>
         <table>
           <thead>
             <tr>
               <th>Code</th>
               <th>Name</th>
               <th>Domain</th>
+              <th>Default tracking ID</th>
               <th></th>
             </tr>
           </thead>
@@ -90,6 +100,7 @@ export default function MarketplacesView({ marketplaces, refresh, onError }: Pro
                   <td><input value={editForm.code} onChange={(e) => setEditForm({ ...editForm, code: e.target.value })} /></td>
                   <td><input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} /></td>
                   <td><input value={editForm.domain} onChange={(e) => setEditForm({ ...editForm, domain: e.target.value })} /></td>
+                  <td><input value={editForm.default_tag} placeholder="none" onChange={(e) => setEditForm({ ...editForm, default_tag: e.target.value })} /></td>
                   <td className="row-actions">
                     <button className="primary" onClick={() => save(m.id)}>Save</button>
                     <button onClick={() => setEditingId(null)}>Cancel</button>
@@ -100,11 +111,14 @@ export default function MarketplacesView({ marketplaces, refresh, onError }: Pro
                   <td>{m.code}</td>
                   <td>{m.name}</td>
                   <td>{m.domain}</td>
+                  <td>
+                    {m.default_tag ? <code>{m.default_tag}</code> : <span className="muted">— not set —</span>}
+                  </td>
                   <td className="row-actions">
                     <button
                       onClick={() => {
                         setEditingId(m.id);
-                        setEditForm({ code: m.code, name: m.name, domain: m.domain });
+                        setEditForm({ code: m.code, name: m.name, domain: m.domain, default_tag: m.default_tag ?? "" });
                       }}
                     >
                       Edit

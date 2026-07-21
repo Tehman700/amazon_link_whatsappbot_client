@@ -60,6 +60,7 @@ export const api = {
     email: string | null;
     link_preference?: "direct" | "hub";
     store_name?: string;
+    apply_default_tags?: boolean;
   }) => request<User>("/users", { method: "POST", body: JSON.stringify(data) }),
   updateUser: (
     id: number,
@@ -79,9 +80,9 @@ export const api = {
     request<void>(`/users/${userId}/tracking-ids/${marketplaceId}`, { method: "DELETE" }),
 
   listMarketplaces: () => request<Marketplace[]>("/marketplaces"),
-  createMarketplace: (data: { code: string; name: string; domain: string }) =>
+  createMarketplace: (data: { code: string; name: string; domain: string; default_tag?: string }) =>
     request<Marketplace>("/marketplaces", { method: "POST", body: JSON.stringify(data) }),
-  updateMarketplace: (id: number, data: { code: string; name: string; domain: string }) =>
+  updateMarketplace: (id: number, data: { code: string; name: string; domain: string; default_tag?: string }) =>
     request<Marketplace>(`/marketplaces/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   deleteMarketplace: (id: number) => request<void>(`/marketplaces/${id}`, { method: "DELETE" }),
 

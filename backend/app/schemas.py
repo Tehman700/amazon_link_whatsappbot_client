@@ -7,6 +7,7 @@ class MarketplaceBase(BaseModel):
     code: str = Field(min_length=2, max_length=8)
     name: str = Field(min_length=1, max_length=64)
     domain: str = Field(min_length=4, max_length=64)
+    default_tag: str = Field(default="", max_length=64)
 
 
 class MarketplaceCreate(MarketplaceBase):
@@ -44,7 +45,9 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
-    pass
+    # Create-only: pre-fill this user's tracking IDs from each marketplace's
+    # built-in default. Ignored on update.
+    apply_default_tags: bool = False
 
 
 class UserOut(UserBase):

@@ -45,6 +45,9 @@ class Marketplace(Base):
     code: Mapped[str] = mapped_column(String(8), unique=True)
     name: Mapped[str] = mapped_column(String(64))
     domain: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    # Built-in tracking ID for this country: new users are pre-filled with it
+    # so the admin only edits the ones that differ.
+    default_tag: Mapped[str] = mapped_column(String(64), default="", server_default="")
 
     tracking_ids: Mapped[list["TrackingID"]] = relationship(
         back_populates="marketplace", cascade="all, delete-orphan"

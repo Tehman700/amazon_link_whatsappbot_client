@@ -15,6 +15,29 @@ from app.seed import seed
 
 Base.metadata.create_all(bind=engine)
 
+
+def _run_migrations() -> None:
+    """create_all() never ALTERs an existing table, so columns added after the
+    first deploy need this. Idempotent and failure-tolerant: Postgres supports
+    IF NOT EXISTS, SQLite retries without it and ignores 'duplicate column'."""
+    from sqlalchemy import text as _sql
+
+    for ddl in [
+        "ALTER TABLE marketplaces ADD COLUMN IF NOT EXISTS default_tag VARCHAR(64) DEFAULT ''",
+    ]:
+        try:
+            with engine.begin() as conn:
+                conn.execute(_sql(ddl))
+        except Exception:
+            try:
+                with engine.begin() as conn:
+                    conn.execute(_sql(ddl.replace(" IF NOT EXISTS", "")))
+            except Exception:
+                pass  # column already exists
+
+
+_run_migrations()
+
 # Lightweight startup migration: create_all never adds columns to existing
 # tables, so bring the live users table up to the current model. Idempotent
 # (IF NOT EXISTS on Postgres; duplicate-column errors swallowed on SQLite).

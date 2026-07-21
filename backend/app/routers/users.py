@@ -22,7 +22,9 @@ def list_users(db: Session = Depends(get_db)):
 
 @router.post("", response_model=schemas.UserOut, status_code=201)
 def create_user(payload: schemas.UserCreate, db: Session = Depends(get_db)):
-    user = models.User(**payload.model_dump())
+    data = payload.model_dump()
+    apply_defaults = data.pop("apply_default_tags", False)
+    user = models.User(**data)
     db.add(user)
     try:
         db.commit()
@@ -30,6 +32,17 @@ def create_user(payload: schemas.UserCreate, db: Session = Depends(get_db)):
         db.rollback()
         raise HTTPException(status_code=409, detail="WhatsApp number already registered")
     db.refresh(user)
+
+    # Pre-fill tracking IDs from each marketplace's built-in default so the
+    # admin only has to edit the ones that differ.
+    if apply_defaults:
+        for m in db.query(models.Marketplace).all():
+            if (m.default_tag or "").strip():
+                db.add(models.TrackingID(
+                    user_id=user.id, marketplace_id=m.id, tag=m.default_tag.strip()
+                ))
+        db.commit()
+        db.refresh(user)
     return user
 
 
@@ -41,7 +54,9 @@ def get_user(user_id: int, db: Session = Depends(get_db)):
 @router.put("/{user_id}", response_model=schemas.UserOut)
 def update_user(user_id: int, payload: schemas.UserCreate, db: Session = Depends(get_db)):
     user = _get_user_or_404(user_id, db)
-    for key, value in payload.model_dump().items():
+    data = payload.model_dump()
+    data.pop("apply_default_tags", None)  # create-only flag
+    for key, value in data.items():
         setattr(user, key, value)
     try:
         db.commit()

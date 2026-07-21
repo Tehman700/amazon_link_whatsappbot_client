@@ -3,6 +3,7 @@ export interface Marketplace {
   code: string;
   name: string;
   domain: string;
+  default_tag: string;
 }
 
 export interface TrackingID {
