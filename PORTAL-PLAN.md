@@ -1,10 +1,16 @@
 # Portal + Hub Pages Plan — "Beast Affiliate" user website
 
-Last updated: 2026-07-16. Companion to [PROJECT-STATUS.md](PROJECT-STATUS.md)
-(the live bot). This file records the **agreed design for the new user-facing
-website module** — decided over 2026-07-15/16 with the owner — so any session
-can resume building without re-deriving it. Nothing here is deployed yet except
-the local prototype.
+Last updated: 2026-07-22. Companion to [PROJECT-STATUS.md](PROJECT-STATUS.md)
+(the live bot). This file records the **agreed design for the user-facing
+website module** — decided over 2026-07-15/16 with the owner — plus the full
+build log so any session can resume without re-deriving it.
+
+**Status: phases 1–5 are BUILT and DEPLOYED** (article engine, bot integration,
+portal, portal administration, earnings) plus a public marketing site. The
+"Decisions locked" section below is the original agreement; where later
+decisions superseded it, the build log at the bottom says so explicitly.
+Code lives in a SEPARATE repo: `c:\Users\tehma\Desktop\beast-affiliates-website`
+→ github.com/beastaffiliate/beast-affiliates-website.
 
 ## What is being built (one paragraph)
 
@@ -89,8 +95,10 @@ users get a per-user percentage share.
    satisfy this if the motive is isolation (reputation is scored at
    registrable-domain level). One domain → marketplace lookup table at
    link-creation time; same single app serves all domains via Host header.
-9. **Earnings pages, create-link-from-web, public store page (/u/slug),
-   multi-number linking: OUT of v1.**
+9. ~~**Earnings pages, create-link-from-web, public store page (/u/slug),
+   multi-number linking: OUT of v1.**~~ **SUPERSEDED** — earnings, the public
+   store page and multi-number linking were all built by 2026-07-19. Only
+   create-link-from-web remains unbuilt.
 
 ## Domains
 
@@ -195,13 +203,103 @@ harness's file edits — restart the process after editing.
   Verified live: CA article on US domain → 308 → beastassociate.com 200;
   US article on US domain → 200 direct. Products cached before the image fix
   heal when a new link for the same ASIN is created (owner re-creates once).
-  **Phase 2 (bot integration) NOT started — owner gate.**
 
-## Open items before build
+- **Phase 2 — bot integration DEPLOYED, owner-confirmed on real WhatsApp.**
+  Per-user `link_preference` decides the reply format; `app/hub.py` mints the
+  article (7s budget) and any failure leaves the direct tagged link untouched.
+  Env `HUB_API_URL` + `HUB_SERVICE_KEY` on the bot's API project.
 
-1. Client's PA-API credentials + marketplace coverage (which countries have
-   Associates/Influencer accounts — determines API reach AND earnings reach).
-2. Buy the second domain (client to confirm name).
-3. Client creates the 4 new accounts (table above) + Namecheap nameserver
-   change to Cloudflare.
-4. Decide which domain gets US vs rest.
+- **Phase 3 — portal DEPLOYED (2026-07-18).** Number-gate signup (no OTP),
+  Overview / Earnings / WhatsApp Linking / Profile. Design follows the owner's
+  "Frontend Design Files" (aubergine, Slack-ish). Extras shipped the same week:
+  Your Links merged into Overview; centered wider Profile with a data-URL
+  avatar; public store page `/u/<slug>` (SSR, today/yesterday/week + country
+  filters); payout details with the PK bank list; mobile responsiveness for
+  portal and articles.
+  **Multi-number linking**: portal generates a 6-char single-use code (3 min
+  TTL, `wa_link_codes`); an unregistered sender texting exactly that code to the
+  bot gets linked (`linked_numbers` in the BOT db, inheriting the primary's tags
+  and preference; the confirmation reply rides a `links_replaced=1` hack because
+  the adapter only replies when that is > 0). Cap 3 numbers including the
+  primary; all attribution stays under the main account. Unlink from the portal
+  via the bot's guarded `/service` router.
+
+- **Phase 4 — Portal administration DEPLOYED (2026-07-19).** Red tab in the bot
+  dashboard at real route `/portal-admin`. Sub-tabs: Accounts, Linked numbers,
+  Payout details, Overall performance, Earnings. The dashboard talks only to the
+  bot API (`/portal-admin/*`, admin token), which proxies the website's
+  `/api/admin/*` (X-Service-Key) and merges bot-side data.
+
+- **Phase 5 — EARNINGS DEPLOYED (2026-07-19), admin-managed, NO Amazon API.**
+  Attribution comes from per-user tracking IDs the admin reads manually from
+  the client's Amazon dashboard. `portal_settings` (default_rate 20, min_payout
+  1000), `portal_accounts.commission_rate` (NULL = default), `earnings_entries`
+  (earning = gross PKR × frozen rate; bonus; adjustment ±), `payout_records`
+  with a method snapshot. Users see **net share only** — no gross, no rate
+  (verified for leakage). Decisions: PKR only, freeform entry labels, rates
+  hidden from users, threshold admin-configurable.
+  *Client reminder on record*: each user needs a unique tracking ID or Amazon
+  cannot split the earnings.
+
+- **Orders + referrals (2026-07-19/20).** `portal_accounts.orders` — an
+  admin-entered purchase count shown in the user's Overview. `referrals` — the
+  admin rewards a referrer for a referred portal user OR a free-text name; the
+  amount adds to the referrer's balance.
+
+- **Always-publish articles (owner decision, 2026-07-20).** EVERY rewritten link
+  now creates a fresh article for ALL users (per-user link dedup removed from
+  `service.create_link`). The reply still respects preference: hub users get the
+  article URL, direct users keep the tagged Amazon link but the article still
+  appears in their portal. The per-(marketplace, ASIN) product cache is KEPT, so
+  this adds no extra scraping.
+
+- **Forwarded article links (2026-07-21).** The bot's resolver now recognizes our
+  own `/p/<id>` and `/go/<id>` URLs on both domains and resolves them through a
+  key-guarded `GET /api/links/{id}/resolve`, which records **no** view or click —
+  so forwarding never inflates the original creator's stats. The forwarded link
+  is re-tagged to the NEW sender and answered per their preference. `create_link`
+  accepts `source_link_id` so forwarding your OWN article returns that same
+  article instead of a duplicate.
+
+- **Public marketing site (2026-07-21).** An earlier "demo portal with dummy
+  data" homepage was built and then **replaced entirely** at the owner's
+  request with a real business website: Home, Articles & Guides, About, Contact,
+  Privacy Policy, Terms. Server-rendered (`app/site.py`) so BOTH domains share
+  one implementation; the portal SPA moved to `/dashboard`. No popups; a Log in
+  button on every page. Cards show product images linking to `/go/<id>`.
+  Gotchas hit and fixed: Vercel rewrites run after the filesystem check (so
+  `dist/index.html` won `/` until explicit routes were used); the CSS string uses
+  `%(accent)s` named formatting, so every literal `%` must be escaped as `%%`.
+
+- **Built-in tracking IDs (2026-07-22).** `marketplaces.default_tag` per country;
+  Add User has an auto-fill checkbox, and the per-user editor has "Fill empty
+  from defaults" (fills blanks only). Existing users are never touched.
+
+- **Admin-created portal accounts + editable earnings (2026-07-22).** Portal
+  administration → Accounts lists registered bot users with no portal account
+  (scrollable, search past 10 rows) with a Create-account button per row: the
+  admin sets username + password and shares them out of band, no forced change
+  at first login. Referral rewards became editable (amount, note, date, and the
+  referred person, switching between a portal user and free text), and then
+  every column of an earnings entry became editable (kind, label, gross, rate,
+  share, date) — share follows gross × rate live but stays overridable so the
+  figure Amazon actually paid can be recorded.
+
+## Open items
+
+1. Client's PA-API credentials + marketplace coverage — still unverified.
+   Currently irrelevant in practice: the site is scrape-first and
+   `USE_PAAPI=false`. NL has no PA-API account (8 CSVs: US UK CA DE FR IT ES AU).
+2. ~~Buy the second domain~~ — done: **beastassociate.com**.
+3. ~~Client creates the new accounts + nameserver change~~ — done; both domains
+   live behind Cloudflare.
+4. ~~Decide which domain gets US vs rest~~ — done: US → beastaffiliates.com
+   (also hosts the portal and marketing site), all others → beastassociate.com.
+5. **Contact details are placeholders** — `support@beastaffiliates.com` appears
+   throughout the marketing site and the contact form is a `mailto:` link.
+   Owner has not supplied a real address or said whether the form should do
+   real submissions.
+6. **No backup system** — specced and approved 2026-07-22, then paused by the
+   owner. See PROJECT-STATUS.md for the agreed shape.
+7. Create-link-from-web (users minting a link in the portal rather than over
+   WhatsApp) is the only original v1 exclusion still unbuilt.

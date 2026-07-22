@@ -1,12 +1,28 @@
 # Project Status — WhatsApp Amazon Affiliate Link Bot
 
-Last updated: 2026-07-16. Read [project-handout.md](project-handout.md) first for the
+Last updated: 2026-07-22. Read [project-handout.md](project-handout.md) first for the
 original client spec; this file records everything built and deployed since.
 
-**System is LIVE with ~40 real users, ramping toward 150–200.** Latest deployed
-commit: `11db95e` (SCALE FIX part 2). All three tiers auto-deploy on `git push`.
+**System is LIVE with 50 real users (450 tracking IDs), ramping toward 150–200.**
+Latest deployed commit: `408bfab` (MUST_LINK_FEATURE). All three tiers
+auto-deploy on `git push`.
 
 ### Quick history (newest first)
+- **MUST_LINK_FEATURE** (`408bfab`) — every reply carrying a rewritten link gains
+  a bold call-to-action line. Env-flagged, default on. See its own section below.
+- **Editable earnings entries** (`ea9a599`) — every column of an Entries row
+  (kind, label, gross, rate, share, date) is editable in Portal administration.
+- **Portal admin UI fixes** (`f2301df`, `14326f4`) — flat red nav tab, red
+  Create-account button, page container widened to `min(1800px, 96vw)` so the
+  9-marketplace Overview grid stops being cut off.
+- **Admin-created portal accounts + editable referrals** (`d2b132c`) — admin can
+  create a portal login for any registered bot user; referral rewards editable.
+- **Built-in tracking IDs** (`d88d0ad`) — per-marketplace `default_tag`,
+  auto-filled on user creation.
+- **Forwarded article links** (`06f2703`) — our own `/p/` and `/go/` URLs are
+  resolved and re-tagged to the forwarding user.
+- **Portal administration + Earnings** (`ce97d92` → `42ed286`) — the whole
+  `/portal-admin` gateway and dashboard page; see the section below.
 - **Hub integration (phase 2)** — per-user `link_preference` ('direct' default /
   'hub') + `store_name` on users (idempotent startup ALTERs in main.py);
   hub-mode replies swap tagged links for article URLs via the Beast Affiliates
@@ -106,6 +122,32 @@ commit secrets).
   so changing the password invalidates tokens. `/users` + `/marketplaces` CRUD
   require the token; `/process-message` and `/health` stay open (adapter calls
   process-message server-to-server).
+  **Credentials were rotated 2026-07-22** (values live only in the Vercel env
+  and the owner's password manager — never in this repo). Rotating them logs
+  every open dashboard session out immediately, by design.
+- `routers/portal_admin.py` — admin-token-guarded gateway to the website's
+  `/api/admin/*` endpoints (adds `X-Service-Key`), merging bot-side data
+  (user names, link preference, linked numbers, who has no portal account yet).
+  The dashboard only ever talks to THIS API — same origin, same admin token.
+  Needs `HUB_API_URL` + `HUB_SERVICE_KEY`; without them the tab 503s cleanly.
+- **`MUST_LINK_FEATURE`** (rewriter.py: `MUST_LINK_TEXT`, `must_link_enabled()`,
+  `append_must_link()`; called once in `routers/process.py`). Every reply that
+  carries a rewritten link gains a bold call-to-action line — current wording
+  `*Order Through above Link 🔗 otherwise Order not accepted❌❌❌❌*` (the
+  asterisks are WhatsApp bold markup). Applied AFTER the hub swap, so it covers
+  both reply styles (tagged Amazon link and article link).
+  - Placement, as chosen by the owner: **one link** → blank line then the line,
+    at the end of the line the link sits on (so text below a link is never split
+    mid-sentence); **several links** → the line appears ONCE at the very end.
+  - Replies with no rewritten link are untouched — the unregistered-sender
+    silence and the linking-code confirmation are unaffected.
+  - Previous wordings are kept in `_PAST_MUST_LINK_TEXTS` so a forwarded copy of
+    an older reply is recognized and does not collect a second line.
+  - **Off switch**: set env `MUST_LINK_FEATURE` to `false`/`0`/`no`/`off`/empty
+    in the Vercel API project and redeploy. Default (unset) is ON. The flag is
+    read per call, so no code change is needed; replies revert byte-identically
+    to pre-feature output, which `tests/test_must_link.py` asserts against the
+    exact previous strings.
 - `seed.py` — idempotent; auto-runs on startup only when the marketplaces table
   is empty (fresh-DB bootstrap). 9 marketplaces (US UK CA DE FR IT ES NL AU).
 - `database.py` — SQLite locally, `DATABASE_URL` in prod; normalizes
@@ -117,8 +159,38 @@ commit secrets).
 ### Frontend (`frontend/src/`)
 - Tabs: **Overview** (default; stat totals + spreadsheet grid, one row per user,
   one column per marketplace, click-to-edit cells — Enter saves, Esc cancels,
-  clearing a tag deletes it), Users (card editor), Marketplaces, Test message.
+  clearing a tag deletes it), Users (card editor), Marketplaces (each row also
+  holds a `default_tag` used to pre-fill new users), Test message, and the red
+  **Portal administration** tab (real route `/portal-admin`, SPA fallback in
+  `frontend/vercel.json`).
+- Page container is `min(1800px, 96vw)` — the old 1100px cap cut the
+  9-marketplace grid off at the FR column.
 - Login page; token in localStorage; auto-logout on 401.
+
+#### Portal administration (`views/PortalAdminView.tsx`)
+Sub-tabs, all served through `/portal-admin/*` on this API:
+- **Accounts** — portal accounts merged with bot data (name, reply preference,
+  store page, links/views/clicks, admin-set orders with inline ✎). Click a user
+  for a detail view (profile summary, best performers, all links). Reset
+  password shows a one-time temp password; disable suspends login without
+  freeing the number; delete frees the number and keeps the links.
+  Below it: **registered bot users with no portal account** — scrollable, search
+  box past 10 rows, and a red **Create account** button per row so the admin can
+  set a username + password on the user's behalf (shared out of band, no forced
+  change at first login). Self-signup is unchanged for everyone else.
+- **Linked numbers** — admin unlink (the bot DB owns `linked_numbers`).
+- **Payout details** — bank/title/account per user, copyable, missing list.
+- **Overall performance** — range + metric filters, bar and trend charts,
+  conversion leaderboard.
+- **Earnings** — global settings (default rate, min payout), per-user rate,
+  and a per-user manage view: add earning (live share preview), bonus /
+  adjustment, payouts, referral rewards, and full history.
+  **Entries and referrals are both editable in place.** For an entry, every
+  column can be changed (kind, label, gross, rate, share, date); share follows
+  gross × rate live as you type but stays editable, so a figure that differs
+  from the arithmetic (what Amazon actually paid) can be recorded. Switching
+  kind to bonus/adjustment zeroes gross and rate. Referral rewards allow
+  editing amount, note, date and the referred person (portal user ↔ free text).
 - Prod builds ALWAYS call same-origin `/api/*` — `frontend/vercel.json` rewrites
   to the API project (no CORS, no env). `VITE_API_URL` is honored in dev only —
   deliberate, because a stray Vercel env var once broke prod. Styling follows
@@ -186,31 +258,48 @@ randomize typing vs "recording" presence. Neither implemented yet.
 - Status page: QR pairing, connection badge; refresh 10s while pairing, 120s
   otherwise; hidden per-message decision log at `&events=1`.
 
-## Current production data (as of 2026-07-16)
+## Current production data (as of 2026-07-22)
 
-- **LIVE with ~40 real users**, ramping toward 150–200 over coming weeks.
+- **LIVE with 50 real users and 450 tracking IDs**, ramping toward 150–200.
   See the dashboard Overview tab for the current list. The sender number in the
   DB must exactly match E.164 format (`+92...`).
-- **Tags may still be `testabc`** on some/all users from the 2026-07-13 delivery
-  testing. Real pre-test tags for the original 9 users are backed up outside this
-  public repo (developer's local Claude memory); confirm with the owner what the
-  live tag state should be before assuming.
-- The bot's own number was `+923460976174`; its matching DB user was deleted
-  during testing — register the bot's current number for self-chat testing.
-- Owner's own number `+923111592151` is registered as "Tehman".
+- **2 portal accounts** exist so far (48 registered users have none) — the admin
+  can now create them from Portal administration → Accounts.
+- **The owner's own row still has placeholder tags** (`testabc` / `test123`) from
+  the 2026-07-13 delivery testing, so links the owner generates personally earn
+  nothing. Other users' tags looked real as of 2026-07-22. Real pre-test tags for
+  the original 9 users are backed up outside this public repo (developer's local
+  Claude memory); confirm with the owner before assuming any tag state.
+- The bot's number was replaced in July 2026; the old one's matching DB user was
+  deleted during testing — register the bot's CURRENT number for self-chat
+  testing. The owner's own number is registered as a normal user ("Tehman").
+  **Actual numbers are deliberately not recorded here — this repo is public.**
+  They live in the developer's local Claude memory and the dashboard.
 
 ## Testing
 
 `backend/tests/` holds the integration scripts (run against a live server):
-- `test_api.py` — 21 rewrite-engine cases (needs local server + seeded DB)
+- `test_api.py` — 21 rewrite-engine cases (needs local server + seeded DB).
+  Assertions include the MUST_LINK line, so they only pass with the flag ON
+  (its default). The expected line is the `MUST` constant at the top of the file.
 - `test_auth.py` — 13 auth cases (needs ADMIN_* env vars from `backend/.env`)
+- `test_must_link.py` — 26 pure-unit cases for MUST_LINK_FEATURE: placement for
+  one link vs several, article links, text below the link, idempotency
+  (forwarded replies, old and new wording), and the off switch across every
+  accepted spelling plus the unset default. No server needed.
 - `test_funnels.py` — funnel-site resolution (network-dependent; tag-agnostic
-  because DB tags are currently `testabc`)
+  because some DB tags are placeholders)
 - `test_canonical.py` — 8 pure-unit cases for canonical short links (no server
   needed), incl. the real monster share URL from the client
+
 Run: start the API, then `uv run python tests/test_api.py` (override target with
-`API_BASE=https://...`); `test_canonical.py` runs standalone. Update `SENDER`
-constants if the registered number changes.
+`API_BASE=https://...`); `test_canonical.py` and `test_must_link.py` run
+standalone. Update `SENDER` constants if the registered number changes.
+Note these are plain scripts, **not** pytest — run them with `python`, not
+`python -m pytest` (collection blows up on their module-level `SystemExit`).
+
+`test_api.py` needs a seeded fixture user with all 9 tags; if it 404s with
+"Sender is not a registered user", the local DB is missing that user.
 
 ## Known constraints / decisions on record
 
@@ -238,11 +327,25 @@ constants if the registered number changes.
   OR migrate (15–20 min: new VM, run `setup.sh`, copy the `session` folder to
   avoid re-pairing, update EC2_* GitHub secrets). Oracle Cloud "Always Free" is
   the $0-forever destination; Lightsail/Hetzner ~$5/mo is the boring-correct one.
-- No LLM/AI anywhere — deterministic by spec. No PA-API, no scraping product data.
+- **No backup system exists** (audited 2026-07-22). All data lives in two
+  separate Neon Postgres databases — the bot's (users, tracking_ids,
+  marketplaces, linked_numbers) and the website's (portal accounts, links,
+  events, earnings, payouts, referrals). The only safety net is Neon's built-in
+  point-in-time restore window, which is short on the free plan; outside it,
+  nothing. A third store has no redundancy at all: the **Baileys session folder
+  on EC2** (`whatsapp-adapter/session/`) — if that instance dies the bot cannot
+  reply until someone re-pairs by QR with the physical phone. A download-backup
+  feature was specced and approved (single .zip: `backup.json` + per-table CSVs,
+  full sensitive fields, raw events, no restore button) but **is not built** —
+  owner paused it on 2026-07-22 to decide later.
+- No LLM/AI anywhere — deterministic by spec. **This bot** neither calls PA-API
+  nor scrapes; article content is fetched by the separate website project
+  (scrape-first, PA-API parked behind `USE_PAAPI=false`), never in this repo.
 - render.yaml is a leftover from an abandoned Render deployment option (unused).
-- `hub-prototype/` (gitignored, local only) — WORKING prototype for the planned
-  user-portal + hub article pages module. Full agreed design, decisions, and
-  hosting plan: [PORTAL-PLAN.md](PORTAL-PLAN.md).
+- `hub-prototype/` (gitignored, local only) — the original prototype for the
+  portal + hub article pages, now superseded by the shipped
+  `beast-affiliates-website` repo. Full design and build history:
+  [PORTAL-PLAN.md](PORTAL-PLAN.md).
 
 ## Agreed scale-up test plan (2026-07-13, not yet executed)
 

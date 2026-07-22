@@ -42,7 +42,7 @@ environment variable to a `postgresql://...` URL for production — no code chan
 `POST /process-message`
 
 ```json
-{ "sender": "+923111592151", "text": "Usa review\nhttps://www.amazon.com/dp/B0GS64BBG2?th=1" }
+{ "sender": "+92XXXXXXXXXX", "text": "Usa review\nhttps://www.amazon.com/dp/B0GS64BBG2?th=1" }
 ```
 
 Response contains the text with only the link(s) rewritten (`&tag=` merged
@@ -57,9 +57,18 @@ Amazon" link (page HTML is fetched and scanned). The original link in the
 message is replaced by the tagged Amazon product link. If a page can't be
 fetched or holds no Amazon link, it is left untouched.
 
-## Not yet built (by design — Phase 3, last)
+Every reply carrying a rewritten link also gets a bold call-to-action line
+(`MUST_LINK_FEATURE`, env-flagged, default on) — see
+[PROJECT-STATUS.md](PROJECT-STATUS.md).
 
-WhatsApp Business Cloud API webhook adapter. It will be a thin layer that
-receives the WhatsApp payload, calls `POST /process-message`, and sends the
-reply (re-attaching any image if present). Blocked on client's Meta Business
-API access.
+## The rest of the system
+
+This repo is one of two. The bot API and admin dashboard live here; the
+user-facing website (marketing pages, portal, hub article pages, and the admin
+endpoints behind the dashboard's "Portal administration" tab) lives in the
+separate `beast-affiliates-website` repo. See
+[PORTAL-PLAN.md](PORTAL-PLAN.md) for the design and full build log, and
+[PROJECT-STATUS.md](PROJECT-STATUS.md) for what is deployed where.
+
+The WhatsApp side runs on a Baileys linked-device adapter
+(`whatsapp-adapter/`, deployed to EC2), not the Meta Cloud API.
