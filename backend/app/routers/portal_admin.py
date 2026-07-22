@@ -174,6 +174,12 @@ async def earnings_add_entry(account_id: int, request: Request):
                     await request.json())
 
 
+@router.put("/earnings/{account_id}/entries/{entry_id}")
+async def earnings_update_entry(account_id: int, entry_id: int, request: Request):
+    return _website("PUT", f"/api/admin/earnings/{account_id}/entries/{entry_id}",
+                    await request.json())
+
+
 @router.delete("/earnings/{account_id}/entries/{entry_id}")
 def earnings_delete_entry(account_id: int, entry_id: int):
     return _website("DELETE", f"/api/admin/earnings/{account_id}/entries/{entry_id}")

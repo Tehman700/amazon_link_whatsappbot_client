@@ -136,6 +136,9 @@ export const portalAdmin = {
   addEntry: (id: number, body: object) =>
     request<{ id: number; net_amount: number }>(
       `/portal-admin/earnings/${id}/entries`, { method: "POST", body: JSON.stringify(body) }),
+  updateEntry: (id: number, entryId: number, body: object) =>
+    request<{ id: number }>(`/portal-admin/earnings/${id}/entries/${entryId}`,
+      { method: "PUT", body: JSON.stringify(body) }),
   deleteEntry: (id: number, entryId: number) =>
     request<{ ok: boolean }>(`/portal-admin/earnings/${id}/entries/${entryId}`, { method: "DELETE" }),
   addPayout: (id: number, body: object) =>

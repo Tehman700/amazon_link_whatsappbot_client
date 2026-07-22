@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useState } from "react";
 import { portalAdmin } from "../api";
 import type {
   EarningsDetailData,
+  EarningsEntryOut,
   EarningsOverview,
   EarningsUserRow,
   PerformanceData,
@@ -849,6 +850,22 @@ function fmtRs(n: number) {
   return "Rs " + n.toLocaleString();
 }
 
+type EntryKind = "earning" | "bonus" | "adjustment";
+
+type EntryEdit = {
+  id: number; kind: EntryKind; label: string;
+  gross: string; rate: string; share: string; date: string;
+};
+
+/* Share follows gross x rate as the admin types, but stays editable — the
+   figure Amazon actually paid sometimes differs from the arithmetic. */
+function recalc(e: EntryEdit): EntryEdit {
+  const gross = Number(e.gross);
+  const rate = Number(e.rate);
+  if (isNaN(gross) || isNaN(rate) || e.gross === "" || e.rate === "") return e;
+  return { ...e, share: String(Math.round((gross * rate) / 100)) };
+}
+
 function EarningsTab() {
   const [data, setData] = useState<EarningsOverview | null>(null);
   const [detailId, setDetailId] = useState<number | null>(null);
@@ -997,6 +1014,8 @@ function EarningsDetail({ accountId, accounts, back }: { accountId: number; acco
     id: number; mode: "user" | "name"; userId: string; name: string;
     amount: string; note: string; date: string;
   } | null>(null);
+  // Inline edit of an existing earnings entry.
+  const [eEdit, setEEdit] = useState<EntryEdit | null>(null);
 
   const load = useCallback(() => {
     portalAdmin
@@ -1101,6 +1120,44 @@ function EarningsDetail({ accountId, accounts, back }: { accountId: number; acco
     if (!confirm("Delete this referral reward? Balance recalculates.")) return;
     try { await portalAdmin.deleteReferral(accountId, id); load(); }
     catch (e) { setError((e as Error).message); }
+  };
+
+  const startEntryEdit = (e: EarningsEntryOut) => {
+    setEEdit({
+      id: e.id,
+      kind: e.kind as EntryKind,
+      label: e.label,
+      gross: e.kind === "earning" ? String(e.gross_amount) : "",
+      rate: e.kind === "earning" ? String(e.rate_applied) : String(data.rate),
+      share: String(e.net_amount),
+      date: e.created_at.slice(0, 10),
+    });
+  };
+
+  const saveEntry = async () => {
+    if (!eEdit) return;
+    if (!eEdit.label.trim()) { setError("Label is required"); return; }
+    const share = Number(eEdit.share);
+    if (isNaN(share)) { setError("Share must be a number"); return; }
+    const body: Record<string, unknown> = {
+      kind: eEdit.kind, label: eEdit.label.trim(),
+      net_amount: share, created_at: eEdit.date,
+    };
+    if (eEdit.kind === "earning") {
+      const gross = Number(eEdit.gross);
+      const rate = Number(eEdit.rate);
+      if (isNaN(gross) || gross <= 0) { setError("Gross must be a positive number"); return; }
+      if (isNaN(rate) || rate < 0 || rate > 100) { setError("Rate must be 0–100"); return; }
+      body.gross_amount = gross;
+      body.rate_applied = rate;
+    } else if (share === 0) {
+      setError("Amount cannot be zero"); return;
+    }
+    try {
+      await portalAdmin.updateEntry(accountId, eEdit.id, body);
+      setEEdit(null);
+      load();
+    } catch (e) { setError((e as Error).message); }
   };
 
   const delEntry = async (id: number) => {
@@ -1300,17 +1357,83 @@ function EarningsDetail({ accountId, accounts, back }: { accountId: number; acco
               </tr>
             </thead>
             <tbody>
-              {data.entries.map((e) => (
-                <tr key={e.id}>
-                  <td><span className={`badge ${e.kind === "earning" ? "" : "warn"}`}>{e.kind}</span></td>
-                  <td>{e.label}{e.note ? <span className="muted"> — {e.note}</span> : null}</td>
-                  <td>{e.kind === "earning" ? fmtRs(e.gross_amount) : "—"}</td>
-                  <td>{e.kind === "earning" ? `${e.rate_applied}%` : "—"}</td>
-                  <td><strong>{fmtRs(e.net_amount)}</strong></td>
-                  <td className="muted" style={{ whiteSpace: "nowrap" }}>{new Date(e.created_at).toLocaleDateString()}</td>
-                  <td><button className="danger" onClick={() => delEntry(e.id)}>Delete</button></td>
-                </tr>
-              ))}
+              {data.entries.map((e) =>
+                eEdit && eEdit.id === e.id ? (
+                  <tr key={e.id}>
+                    <td>
+                      <select
+                        value={eEdit.kind}
+                        onChange={(ev) => setEEdit({ ...eEdit, kind: ev.target.value as EntryKind })}
+                      >
+                        <option value="earning">earning</option>
+                        <option value="bonus">bonus</option>
+                        <option value="adjustment">adjustment</option>
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        style={{ maxWidth: 150 }}
+                        value={eEdit.label}
+                        onChange={(ev) => setEEdit({ ...eEdit, label: ev.target.value })}
+                      />
+                    </td>
+                    <td>
+                      {eEdit.kind === "earning" ? (
+                        <input
+                          style={{ maxWidth: 110 }}
+                          value={eEdit.gross}
+                          onChange={(ev) => setEEdit(recalc({ ...eEdit, gross: ev.target.value }))}
+                        />
+                      ) : (
+                        <span className="muted">—</span>
+                      )}
+                    </td>
+                    <td>
+                      {eEdit.kind === "earning" ? (
+                        <input
+                          style={{ maxWidth: 70 }}
+                          value={eEdit.rate}
+                          onChange={(ev) => setEEdit(recalc({ ...eEdit, rate: ev.target.value }))}
+                        />
+                      ) : (
+                        <span className="muted">—</span>
+                      )}
+                    </td>
+                    <td>
+                      <input
+                        style={{ maxWidth: 110 }}
+                        value={eEdit.share}
+                        onChange={(ev) => setEEdit({ ...eEdit, share: ev.target.value })}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="date"
+                        style={{ maxWidth: 150 }}
+                        value={eEdit.date}
+                        onChange={(ev) => setEEdit({ ...eEdit, date: ev.target.value })}
+                      />
+                    </td>
+                    <td className="row-actions">
+                      <button className="btn-red-solid" onClick={saveEntry}>Save</button>
+                      <button className="cell-btn" onClick={() => setEEdit(null)}>Cancel</button>
+                    </td>
+                  </tr>
+                ) : (
+                  <tr key={e.id}>
+                    <td><span className={`badge ${e.kind === "earning" ? "" : "warn"}`}>{e.kind}</span></td>
+                    <td>{e.label}{e.note ? <span className="muted"> — {e.note}</span> : null}</td>
+                    <td>{e.kind === "earning" ? fmtRs(e.gross_amount) : "—"}</td>
+                    <td>{e.kind === "earning" ? `${e.rate_applied}%` : "—"}</td>
+                    <td><strong>{fmtRs(e.net_amount)}</strong></td>
+                    <td className="muted" style={{ whiteSpace: "nowrap" }}>{new Date(e.created_at).toLocaleDateString()}</td>
+                    <td className="row-actions">
+                      <button className="cell-btn" onClick={() => startEntryEdit(e)}>Edit</button>
+                      <button className="danger" onClick={() => delEntry(e.id)}>Delete</button>
+                    </td>
+                  </tr>
+                ),
+              )}
             </tbody>
           </table>
         </div>
