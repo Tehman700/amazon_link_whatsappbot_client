@@ -6,6 +6,7 @@ a hardcoded list), and swaps in the sender's tracking tag for that
 marketplace. Everything else in the text is passed through untouched.
 """
 
+import os
 import re
 from dataclasses import dataclass
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
@@ -247,3 +248,64 @@ def process_text(
 
     out.append(text[last_end:])
     return "".join(out), replacements, skipped
+
+
+# --------------------------------------------------------- MUST_LINK_FEATURE
+#
+# Appends a call-to-action line to every reply that contains a rewritten link,
+# for both reply styles (tagged Amazon link and hub article link).
+#
+# Controlled by the MUST_LINK_FEATURE env var. Set it to any of
+# 0 / false / no / off to switch the feature off — replies then go out exactly
+# as they did before the feature existed. Read per call, so flipping the env
+# var and redeploying is the whole off switch; no other code changes needed.
+
+MUST_LINK_TEXT = "*Order Through above Link 🔗 otherwise Order not accepted❌❌❌❌*"
+
+# Wordings we've used before. Kept so a forwarded copy of an older reply is
+# recognized as already carrying the line instead of collecting a second one.
+_PAST_MUST_LINK_TEXTS = (
+    MUST_LINK_TEXT,
+    "*MUST BUY USING THIS ABOVE LINK*",
+)
+
+_OUR_ARTICLE_HOSTS = ("beastaffiliates.com", "beastassociate.com")
+
+
+def must_link_enabled() -> bool:
+    return os.getenv("MUST_LINK_FEATURE", "true").strip().lower() not in (
+        "0", "false", "no", "off", "",
+    )
+
+
+def _is_our_link(url: str, domain_map: dict[str, object]) -> bool:
+    host = (urlsplit(url).hostname or "").lower()
+    if any(host == h or host.endswith("." + h) for h in _OUR_ARTICLE_HOSTS):
+        return True
+    return match_marketplace(host, domain_map) is not None
+
+
+def append_must_link(
+    text: str, link_count: int, domain_map: dict[str, object] | None = None
+) -> str:
+    """Add the call-to-action line to a reply that carries link_count links.
+
+    One link  -> at the end of the line the link sits on, so a sentence that
+                 continues below the link is never split in half.
+    Several   -> once at the very end of the whole reply.
+    """
+    if not must_link_enabled() or link_count < 1:
+        return text
+    if any(t in text for t in _PAST_MUST_LINK_TEXTS):
+        return text  # forwarded copy of one of our own replies
+
+    if link_count == 1:
+        domain_map = domain_map or {}
+        ours = [m for m in URL_RE.finditer(text)
+                if _is_our_link(_clean_url_match(m.group(0)), domain_map)]
+        if ours:
+            line_end = text.find("\n", ours[-1].end())
+            if line_end != -1:
+                return f"{text[:line_end]}\n\n{MUST_LINK_TEXT}{text[line_end:]}"
+
+    return f"{text.rstrip()}\n\n{MUST_LINK_TEXT}"
