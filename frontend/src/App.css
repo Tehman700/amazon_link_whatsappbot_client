@@ -390,17 +390,49 @@ td.row-actions {
   }
 }
 
-/* --- Portal administration (red) tab --- */
+/* --- Portal administration (red) tab ---
+   Flat like the rest of the nav: red label, red underline when active.
+   The solid red fill fought the nav's ink underline and read as a banner. */
 nav button.danger-tab {
   color: #c0392b;
+  background: transparent;
 }
 nav button.danger-tab:hover {
-  background: #fdf1ec;
   color: #a93226;
+  box-shadow: inset 0 -2px 0 #e8b4ab;
 }
-nav button.danger-tab.active {
+nav button.danger-tab.active,
+nav button.danger-tab.active:hover {
+  background: transparent;
+  color: #c0392b;
+  box-shadow: inset 0 -2px 0 #c0392b;
+}
+
+/* Red action buttons for the portal-admin section. */
+button.btn-red {
+  color: #c0392b;
+  border-color: #c0392b;
+  background: var(--canvas);
+}
+button.btn-red:hover {
   background: #c0392b;
+  border-color: #c0392b;
   color: #fff;
+}
+button.btn-red-solid {
+  background: #c0392b;
+  border-color: #c0392b;
+  color: #fff;
+  font-weight: 600;
+}
+button.btn-red-solid:hover {
+  background: #a93226;
+  border-color: #a93226;
+}
+button.btn-red-solid:disabled {
+  background: #e6b3ac;
+  border-color: #e6b3ac;
+  cursor: not-allowed;
 }
 .subtabs {
   display: flex;

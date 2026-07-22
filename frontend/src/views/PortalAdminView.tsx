@@ -356,7 +356,7 @@ function NotSignedUpCard({
                     <td>{u.whatsapp_number}</td>
                     <td className="row-actions">
                       <button
-                        className="cell-btn"
+                        className={openId === u.id ? "cell-btn" : "btn-red"}
                         onClick={() => (openId === u.id ? setOpenId(null) : open(u))}
                       >
                         {openId === u.id ? "Cancel" : "Create account"}
@@ -387,7 +387,7 @@ function NotSignedUpCard({
                             onChange={(e) => setPassword(e.target.value)}
                           />
                           <button
-                            className="primary"
+                            className="btn-red-solid"
                             disabled={busy || username.trim().length < 3 || password.length < 8}
                             onClick={() => create(u)}
                           >
