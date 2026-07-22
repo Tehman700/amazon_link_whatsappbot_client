@@ -146,6 +146,12 @@ export const portalAdmin = {
   addReferral: (id: number, body: object) =>
     request<{ id: number }>(
       `/portal-admin/earnings/${id}/referrals`, { method: "POST", body: JSON.stringify(body) }),
+  createAccount: (body: { whatsapp_number: string; username: string; password: string }) =>
+    request<{ id: number; username: string; whatsapp_number: string }>(
+      "/portal-admin/accounts", { method: "POST", body: JSON.stringify(body) }),
+  updateReferral: (id: number, referralId: number, body: object) =>
+    request<{ id: number }>(`/portal-admin/earnings/${id}/referrals/${referralId}`,
+      { method: "PUT", body: JSON.stringify(body) }),
   deleteReferral: (id: number, referralId: number) =>
     request<{ ok: boolean }>(`/portal-admin/earnings/${id}/referrals/${referralId}`, { method: "DELETE" }),
 };

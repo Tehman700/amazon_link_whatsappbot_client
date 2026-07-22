@@ -52,14 +52,37 @@ def list_accounts(db: Session = Depends(get_db)):
     for ln in linked_rows:
         linked_by_user_id.setdefault(ln.user_id, []).append(ln.whatsapp_number)
 
+    signed_up = set()
     for a in accounts:
         user = users_by_number.get(a["whatsapp_number"])
+        signed_up.add(a["whatsapp_number"])
         a["name"] = user.name if user else "(not a bot user)"
         a["link_preference"] = user.link_preference if user else "-"
         a["store_name"] = user.store_name if user else ""
         a["linked_numbers"] = linked_by_user_id.get(user.id, []) if user else []
 
-    return {"accounts": accounts}
+    # Registered bot users without a portal account yet — the admin can create
+    # one for them from here.
+    not_signed_up = [
+        {"id": u.id, "name": u.name, "whatsapp_number": n}
+        for n, u in sorted(users_by_number.items(), key=lambda kv: kv[1].name.lower())
+        if n not in signed_up
+    ]
+    return {"accounts": accounts, "not_signed_up": not_signed_up}
+
+
+@router.post("/accounts")
+async def create_account(request: Request, db: Session = Depends(get_db)):
+    """Create a portal account on a registered user's behalf."""
+    body = await request.json()
+    number = str(body.get("whatsapp_number", "")).strip()
+    if db.query(models.User).filter(models.User.whatsapp_number == number).first() is None:
+        raise HTTPException(404, "That number is not a registered bot user")
+    return _website("POST", "/api/admin/accounts", {
+        "whatsapp_number": number,
+        "username": str(body.get("username", "")).strip(),
+        "password": str(body.get("password", "")),
+    })
 
 
 @router.get("/performance")
@@ -170,6 +193,12 @@ def earnings_delete_payout(account_id: int, payout_id: int):
 @router.post("/earnings/{account_id}/referrals")
 async def earnings_add_referral(account_id: int, request: Request):
     return _website("POST", f"/api/admin/earnings/{account_id}/referrals",
+                    await request.json())
+
+
+@router.put("/earnings/{account_id}/referrals/{referral_id}")
+async def earnings_update_referral(account_id: int, referral_id: int, request: Request):
+    return _website("PUT", f"/api/admin/earnings/{account_id}/referrals/{referral_id}",
                     await request.json())
 
 

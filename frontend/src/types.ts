@@ -65,6 +65,7 @@ export interface PortalAdminAccount {
 
 export interface PortalAdminData {
   accounts: PortalAdminAccount[];
+  not_signed_up: { id: number; name: string; whatsapp_number: string }[];
 }
 
 export interface PortalAdminLink {

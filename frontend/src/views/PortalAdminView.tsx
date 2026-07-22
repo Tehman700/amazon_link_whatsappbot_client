@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { portalAdmin } from "../api";
 import type {
   EarningsDetailData,
@@ -8,6 +8,7 @@ import type {
   PortalAdminAccount,
   PortalAdminData,
   PortalAdminLink,
+  ReferralOut,
 } from "../types";
 
 type SubTab = "accounts" | "linked" | "payouts" | "performance" | "earnings";
@@ -253,7 +254,162 @@ function AccountsTab({
         )}
       </div>
 
+      <NotSignedUpCard
+        rows={data.not_signed_up}
+        refresh={refresh}
+        onError={onError}
+        onCreated={(username, pw) => onTempPw(username, pw)}
+      />
     </>
+  );
+}
+
+/* Registered bot users that have no portal account yet. The admin can create
+   one for them here (they pick the username + password themselves and pass it
+   on out-of-band); self-signup still works for everyone else. */
+function NotSignedUpCard({
+  rows,
+  refresh,
+  onError,
+  onCreated,
+}: {
+  rows: { id: number; name: string; whatsapp_number: string }[];
+  refresh: () => void;
+  onError: (m: string) => void;
+  onCreated: (username: string, pw: string) => void;
+}) {
+  const [openId, setOpenId] = useState<number | null>(null);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [q, setQ] = useState("");
+
+  const suggest = (name: string) =>
+    name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 32);
+
+  const open = (u: { id: number; name: string }) => {
+    setOpenId(u.id);
+    setUsername(suggest(u.name));
+    setPassword("");
+  };
+
+  const create = async (u: { name: string; whatsapp_number: string }) => {
+    setBusy(true);
+    try {
+      const res = await portalAdmin.createAccount({
+        whatsapp_number: u.whatsapp_number,
+        username: username.trim(),
+        password,
+      });
+      onCreated(res.username, password);
+      setOpenId(null);
+      setUsername("");
+      setPassword("");
+      refresh();
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const needle = q.trim().toLowerCase();
+  const shown = needle
+    ? rows.filter(
+        (u) =>
+          u.name.toLowerCase().includes(needle) || u.whatsapp_number.includes(needle),
+      )
+    : rows;
+
+  return (
+    <div className="card" style={{ marginTop: 18 }}>
+      <h2>Registered bot users without a portal account ({rows.length})</h2>
+      <p className="muted" style={{ marginTop: -6, marginBottom: 10, fontSize: 13 }}>
+        Create an account on their behalf by setting a username and password —
+        tell them separately. They can change the password in their Profile.
+      </p>
+      {rows.length > 10 && (
+        <input
+          style={{ maxWidth: 260, marginBottom: 10 }}
+          placeholder="Search name or number…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+      )}
+      {rows.length === 0 ? (
+        <p className="muted">Every registered bot user already has a portal account.</p>
+      ) : (
+        <div className="table-scroll" style={{ maxHeight: 430, overflowY: "auto" }}>
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Number</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((u) => (
+                <Fragment key={u.id}>
+                  <tr>
+                    <td>{u.name}</td>
+                    <td>{u.whatsapp_number}</td>
+                    <td className="row-actions">
+                      <button
+                        className="cell-btn"
+                        onClick={() => (openId === u.id ? setOpenId(null) : open(u))}
+                      >
+                        {openId === u.id ? "Cancel" : "Create account"}
+                      </button>
+                    </td>
+                  </tr>
+                  {openId === u.id && (
+                    <tr>
+                      <td colSpan={3} style={{ background: "var(--surface-2, #fafafa)" }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 8,
+                            flexWrap: "wrap",
+                            alignItems: "center",
+                          }}
+                        >
+                          <input
+                            style={{ maxWidth: 200 }}
+                            placeholder="username"
+                            value={username}
+                            onChange={(e) => setUsername(e.target.value)}
+                          />
+                          <input
+                            style={{ maxWidth: 200 }}
+                            placeholder="password (min 8 chars)"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                          />
+                          <button
+                            className="primary"
+                            disabled={busy || username.trim().length < 3 || password.length < 8}
+                            onClick={() => create(u)}
+                          >
+                            {busy ? "Creating…" : "Create"}
+                          </button>
+                          <span className="muted" style={{ fontSize: 12 }}>
+                            Letters, numbers and _ only · password at least 8 characters
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {rows.length > 0 && shown.length === 0 && (
+        <p className="muted">No user matches “{q}”.</p>
+      )}
+    </div>
   );
 }
 
@@ -836,6 +992,11 @@ function EarningsDetail({ accountId, accounts, back }: { accountId: number; acco
   const [refName, setRefName] = useState("");
   const [refAmount, setRefAmount] = useState("");
   const [refNote, setRefNote] = useState("");
+  // Inline edit of an existing referral reward (they change day to day).
+  const [edit, setEdit] = useState<{
+    id: number; mode: "user" | "name"; userId: string; name: string;
+    amount: string; note: string; date: string;
+  } | null>(null);
 
   const load = useCallback(() => {
     portalAdmin
@@ -895,6 +1056,43 @@ function EarningsDetail({ accountId, accounts, back }: { accountId: number; acco
       }
       await portalAdmin.addReferral(accountId, body);
       setRefUserId(""); setRefName(""); setRefAmount(""); setRefNote("");
+      load();
+    } catch (e) { setError((e as Error).message); }
+  };
+
+  const startEdit = (r: ReferralOut) => {
+    const isUser = r.referred_name.startsWith("@");
+    const match = isUser
+      ? accounts.find((u) => `@${u.username}` === r.referred_name)
+      : undefined;
+    setEdit({
+      id: r.id,
+      mode: isUser ? "user" : "name",
+      userId: match ? String(match.account_id) : "",
+      name: isUser ? "" : r.referred_name,
+      amount: String(r.amount),
+      note: r.note,
+      date: r.created_at.slice(0, 10),
+    });
+  };
+
+  const saveReferral = async () => {
+    if (!edit) return;
+    const amount = Number(edit.amount);
+    if (isNaN(amount) || amount <= 0) { setError("Reward must be a positive number"); return; }
+    const body: Record<string, unknown> = {
+      amount, note: edit.note, created_at: edit.date,
+    };
+    if (edit.mode === "user") {
+      if (!edit.userId) { setError("Pick the referred user"); return; }
+      body.referred_account_id = Number(edit.userId);
+    } else {
+      if (!edit.name.trim()) { setError("Enter the referred person's name"); return; }
+      body.referred_name = edit.name.trim();
+    }
+    try {
+      await portalAdmin.updateReferral(accountId, edit.id, body);
+      setEdit(null);
       load();
     } catch (e) { setError((e as Error).message); }
   };
@@ -1001,15 +1199,79 @@ function EarningsDetail({ accountId, accounts, back }: { accountId: number; acco
                 <tr><th>Referred</th><th>Reward</th><th>Note</th><th>Date</th><th></th></tr>
               </thead>
               <tbody>
-                {data.referrals.map((r) => (
-                  <tr key={r.id}>
-                    <td>{r.referred_name}</td>
-                    <td><strong>{fmtRs(r.amount)}</strong></td>
-                    <td className="muted">{r.note || "—"}</td>
-                    <td className="muted" style={{ whiteSpace: "nowrap" }}>{new Date(r.created_at).toLocaleDateString()}</td>
-                    <td><button className="danger" onClick={() => delReferral(r.id)}>Delete</button></td>
-                  </tr>
-                ))}
+                {data.referrals.map((r) =>
+                  edit && edit.id === r.id ? (
+                    <tr key={r.id}>
+                      <td>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <select
+                            value={edit.mode}
+                            onChange={(e) => setEdit({ ...edit, mode: e.target.value as "user" | "name" })}
+                          >
+                            <option value="user">Portal user</option>
+                            <option value="name">Name</option>
+                          </select>
+                          {edit.mode === "user" ? (
+                            <select
+                              value={edit.userId}
+                              onChange={(e) => setEdit({ ...edit, userId: e.target.value })}
+                            >
+                              <option value="">— pick user —</option>
+                              {accounts
+                                .filter((u) => u.account_id !== accountId)
+                                .map((u) => (
+                                  <option key={u.account_id} value={u.account_id}>@{u.username}</option>
+                                ))}
+                            </select>
+                          ) : (
+                            <input
+                              style={{ maxWidth: 160 }}
+                              value={edit.name}
+                              onChange={(e) => setEdit({ ...edit, name: e.target.value })}
+                            />
+                          )}
+                        </div>
+                      </td>
+                      <td>
+                        <input
+                          style={{ maxWidth: 110 }}
+                          value={edit.amount}
+                          onChange={(e) => setEdit({ ...edit, amount: e.target.value })}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          style={{ maxWidth: 160 }}
+                          value={edit.note}
+                          onChange={(e) => setEdit({ ...edit, note: e.target.value })}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="date"
+                          style={{ maxWidth: 150 }}
+                          value={edit.date}
+                          onChange={(e) => setEdit({ ...edit, date: e.target.value })}
+                        />
+                      </td>
+                      <td className="row-actions">
+                        <button className="primary" onClick={saveReferral}>Save</button>
+                        <button className="cell-btn" onClick={() => setEdit(null)}>Cancel</button>
+                      </td>
+                    </tr>
+                  ) : (
+                    <tr key={r.id}>
+                      <td>{r.referred_name}</td>
+                      <td><strong>{fmtRs(r.amount)}</strong></td>
+                      <td className="muted">{r.note || "—"}</td>
+                      <td className="muted" style={{ whiteSpace: "nowrap" }}>{new Date(r.created_at).toLocaleDateString()}</td>
+                      <td className="row-actions">
+                        <button className="cell-btn" onClick={() => startEdit(r)}>Edit</button>
+                        <button className="danger" onClick={() => delReferral(r.id)}>Delete</button>
+                      </td>
+                    </tr>
+                  ),
+                )}
               </tbody>
             </table>
           </div>
