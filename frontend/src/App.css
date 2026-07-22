@@ -1,7 +1,9 @@
 /* Layout — flat catalog stacking, 48px section rhythm, no decorative chrome */
 
 .layout {
-  max-width: 1100px;
+  /* Wide tables (9 marketplace columns, portal admin) need the room —
+     capped so text sections stay readable on ultrawide monitors. */
+  max-width: min(1800px, 96vw);
   margin: 0 auto;
   padding: 0 24px var(--sp-section);
 }
