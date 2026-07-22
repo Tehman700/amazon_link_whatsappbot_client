@@ -8,10 +8,6 @@ import urllib.request
 BASE = os.getenv("API_BASE", "http://127.0.0.1:8000")
 SENDER = "+923460976174"  # Beast Affiliate (updated via dashboard)
 
-# MUST_LINK_FEATURE: every reply carrying a rewritten link gains this line.
-# One link -> end of the link's line; several -> once at the very end.
-MUST = "\n\n*Order Through above Link 🔗 otherwise Order not accepted❌❌❌❌*"
-
 passed = 0
 failed = 0
 
@@ -44,8 +40,7 @@ def check(name, cond, detail=""):
 text = "Usa review\nStore name: YusersaEssentials\nhttps://www.amazon.com/dp/B0GS64BBG2?th=1"
 status, r = post("/process-message", {"sender": SENDER, "text": text})
 check("US link, existing ?th=1 param merged with &tag=",
-      status == 200 and r["text"].endswith(
-          "https://www.amazon.com/dp/B0GS64BBG2?th=1&tag=beastaffiliate-20" + MUST),
+      status == 200 and r["text"].endswith("https://www.amazon.com/dp/B0GS64BBG2?th=1&tag=beastaffiliate-20"),
       r)
 check("caption text untouched",
       r["text"].startswith("Usa review\nStore name: YusersaEssentials\n"), r["text"])
@@ -53,7 +48,7 @@ check("caption text untouched",
 # 2. No existing params -> ?tag=
 status, r = post("/process-message", {"sender": SENDER, "text": "https://www.amazon.co.uk/dp/B0ABC123"})
 check("UK link, no params -> ?tag=beastaffiliate-21",
-      r["text"] == "https://www.amazon.co.uk/dp/B0ABC123?tag=beastaffiliate-21" + MUST, r)
+      r["text"] == "https://www.amazon.co.uk/dp/B0ABC123?tag=beastaffiliate-21", r)
 
 # 3. Every marketplace (all 9 now have tags)
 for domain, tag in [
@@ -68,8 +63,7 @@ for domain, tag in [
     ("amazon.com.au", "beastaffiliate-22"),
 ]:
     status, r = post("/process-message", {"sender": SENDER, "text": f"check this https://www.{domain}/dp/B0TEST"})
-    check(f"{domain} -> {tag}",
-          r["text"] == f"check this https://www.{domain}/dp/B0TEST?tag={tag}" + MUST, r)
+    check(f"{domain} -> {tag}", r["text"] == f"check this https://www.{domain}/dp/B0TEST?tag={tag}", r)
 
 # 4. amazon.com.au must NOT be treated as amazon.com
 status, r = post("/process-message", {"sender": SENDER, "text": "https://www.amazon.com.au/dp/B0X"})
@@ -79,14 +73,14 @@ check("com.au detected as AU not US", "beastaffiliate-22" in r["text"] and "beas
 status, r = post("/process-message",
                  {"sender": SENDER, "text": "https://www.amazon.de/dp/B0X?th=1&tag=someoneelse-21&psc=1"})
 check("foreign tag replaced, th & psc kept",
-      r["text"] == "https://www.amazon.de/dp/B0X?th=1&psc=1&tag=beastaffiliate04-21" + MUST, r)
+      r["text"] == "https://www.amazon.de/dp/B0X?th=1&psc=1&tag=beastaffiliate04-21", r)
 
 # 6. Multiple links in one message -> all replaced
 status, r = post("/process-message",
                  {"sender": SENDER, "text": "a https://amazon.com/dp/B01 b https://amazon.ca/dp/B02 c"})
 check("two links both replaced",
       r["links_replaced"] == 2
-      and r["text"] == "a https://amazon.com/dp/B01?tag=beastaffiliate-20 b https://amazon.ca/dp/B02?tag=beastaffiliate0a-20 c" + MUST, r)
+      and r["text"] == "a https://amazon.com/dp/B01?tag=beastaffiliate-20 b https://amazon.ca/dp/B02?tag=beastaffiliate0a-20 c", r)
 
 # 7. Non-Amazon URL with no Amazon link on the page -> untouched
 status, r = post("/process-message", {"sender": SENDER, "text": "see https://example.com/ ok"})
@@ -104,11 +98,11 @@ check("unknown sender -> 404", status == 404, (status, r))
 # 10. URL followed by punctuation
 status, r = post("/process-message", {"sender": SENDER, "text": "buy (https://www.amazon.com/dp/B0X), thanks!"})
 check("trailing punctuation not swallowed",
-      r["text"] == "buy (https://www.amazon.com/dp/B0X?tag=beastaffiliate-20), thanks!" + MUST, r)
+      r["text"] == "buy (https://www.amazon.com/dp/B0X?tag=beastaffiliate-20), thanks!", r)
 
 # 11. Emojis / unicode preserved
 status, r = post("/process-message", {"sender": SENDER, "text": "ðŸ”¥ deal! https://amazon.com/dp/B0X ðŸ”¥"})
-check("emojis preserved", r["text"] == "ðŸ”¥ deal! https://amazon.com/dp/B0X?tag=beastaffiliate-20 ðŸ”¥" + MUST, r)
+check("emojis preserved", r["text"] == "ðŸ”¥ deal! https://amazon.com/dp/B0X?tag=beastaffiliate-20 ðŸ”¥", r)
 
 # 12. NEW: real client blogspot page (screenshot) -> resolves to amazon.de + DE tag
 blog = "https://lexofindsde.blogspot.com/2026/07/fingerprint-fingerprint-lock-locker.html"
@@ -122,7 +116,6 @@ ok = (
     and "tag=beastaffiliate04-21" in r["text"]
     and r["text"].startswith("Sold by\nAnweller DE\n")
     and r["text"].endswith("\nMust order through link")
-    and MUST.strip() in r["text"]
 )
 check("blogspot page resolved to tagged amazon.de link", ok, r)
 if status == 200 and r["replacements"]:

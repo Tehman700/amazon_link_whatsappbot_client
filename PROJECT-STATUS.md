@@ -4,12 +4,10 @@ Last updated: 2026-07-22. Read [project-handout.md](project-handout.md) first fo
 original client spec; this file records everything built and deployed since.
 
 **System is LIVE with 50 real users (450 tracking IDs), ramping toward 150–200.**
-Latest deployed commit: `408bfab` (MUST_LINK_FEATURE). All three tiers
+Latest deployed commit: `df0fbe7` (docs refresh). All three tiers
 auto-deploy on `git push`.
 
 ### Quick history (newest first)
-- **MUST_LINK_FEATURE** (`408bfab`) — every reply carrying a rewritten link gains
-  a bold call-to-action line. Env-flagged, default on. See its own section below.
 - **Editable earnings entries** (`ea9a599`) — every column of an Entries row
   (kind, label, gross, rate, share, date) is editable in Portal administration.
 - **Portal admin UI fixes** (`f2301df`, `14326f4`) — flat red nav tab, red
@@ -130,24 +128,6 @@ commit secrets).
   (user names, link preference, linked numbers, who has no portal account yet).
   The dashboard only ever talks to THIS API — same origin, same admin token.
   Needs `HUB_API_URL` + `HUB_SERVICE_KEY`; without them the tab 503s cleanly.
-- **`MUST_LINK_FEATURE`** (rewriter.py: `MUST_LINK_TEXT`, `must_link_enabled()`,
-  `append_must_link()`; called once in `routers/process.py`). Every reply that
-  carries a rewritten link gains a bold call-to-action line — current wording
-  `*Order Through above Link 🔗 otherwise Order not accepted❌❌❌❌*` (the
-  asterisks are WhatsApp bold markup). Applied AFTER the hub swap, so it covers
-  both reply styles (tagged Amazon link and article link).
-  - Placement, as chosen by the owner: **one link** → blank line then the line,
-    at the end of the line the link sits on (so text below a link is never split
-    mid-sentence); **several links** → the line appears ONCE at the very end.
-  - Replies with no rewritten link are untouched — the unregistered-sender
-    silence and the linking-code confirmation are unaffected.
-  - Previous wordings are kept in `_PAST_MUST_LINK_TEXTS` so a forwarded copy of
-    an older reply is recognized and does not collect a second line.
-  - **Off switch**: set env `MUST_LINK_FEATURE` to `false`/`0`/`no`/`off`/empty
-    in the Vercel API project and redeploy. Default (unset) is ON. The flag is
-    read per call, so no code change is needed; replies revert byte-identically
-    to pre-feature output, which `tests/test_must_link.py` asserts against the
-    exact previous strings.
 - `seed.py` — idempotent; auto-runs on startup only when the marketplaces table
   is empty (fresh-DB bootstrap). 9 marketplaces (US UK CA DE FR IT ES NL AU).
 - `database.py` — SQLite locally, `DATABASE_URL` in prod; normalizes
@@ -279,22 +259,15 @@ randomize typing vs "recording" presence. Neither implemented yet.
 ## Testing
 
 `backend/tests/` holds the integration scripts (run against a live server):
-- `test_api.py` — 21 rewrite-engine cases (needs local server + seeded DB).
-  Assertions include the MUST_LINK line, so they only pass with the flag ON
-  (its default). The expected line is the `MUST` constant at the top of the file.
+- `test_api.py` — 21 rewrite-engine cases (needs local server + seeded DB)
 - `test_auth.py` — 13 auth cases (needs ADMIN_* env vars from `backend/.env`)
-- `test_must_link.py` — 26 pure-unit cases for MUST_LINK_FEATURE: placement for
-  one link vs several, article links, text below the link, idempotency
-  (forwarded replies, old and new wording), and the off switch across every
-  accepted spelling plus the unset default. No server needed.
 - `test_funnels.py` — funnel-site resolution (network-dependent; tag-agnostic
   because some DB tags are placeholders)
 - `test_canonical.py` — 8 pure-unit cases for canonical short links (no server
   needed), incl. the real monster share URL from the client
 
 Run: start the API, then `uv run python tests/test_api.py` (override target with
-`API_BASE=https://...`); `test_canonical.py` and `test_must_link.py` run
-standalone. Update `SENDER` constants if the registered number changes.
+`API_BASE=https://...`); `test_canonical.py` runs standalone. Update `SENDER` constants if the registered number changes.
 Note these are plain scripts, **not** pytest — run them with `python`, not
 `python -m pytest` (collection blows up on their module-level `SystemExit`).
 

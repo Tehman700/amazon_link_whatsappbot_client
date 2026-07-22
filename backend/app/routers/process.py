@@ -3,7 +3,7 @@ import re
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from .. import hub, models, rewriter, schemas
+from .. import hub, models, schemas
 from ..database import get_db
 from ..resolver import resolve_all
 from ..rewriter import build_from_asin, find_urls, process_text
@@ -116,10 +116,6 @@ async def process_message(payload: schemas.ProcessRequest, db: Session = Depends
             )
         except Exception:
             pass
-
-        # MUST_LINK_FEATURE — call-to-action line, applied after the hub swap
-        # so it covers both reply styles. No-op when the flag is off.
-        new_text = rewriter.append_must_link(new_text, len(replacements), domain_map)
 
     return schemas.ProcessResponse(
         text=new_text,

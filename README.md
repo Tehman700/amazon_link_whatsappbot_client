@@ -57,10 +57,6 @@ Amazon" link (page HTML is fetched and scanned). The original link in the
 message is replaced by the tagged Amazon product link. If a page can't be
 fetched or holds no Amazon link, it is left untouched.
 
-Every reply carrying a rewritten link also gets a bold call-to-action line
-(`MUST_LINK_FEATURE`, env-flagged, default on) — see
-[PROJECT-STATUS.md](PROJECT-STATUS.md).
-
 ## The rest of the system
 
 This repo is one of two. The bot API and admin dashboard live here; the
