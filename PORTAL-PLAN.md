@@ -299,7 +299,10 @@ harness's file edits — restart the process after editing.
    throughout the marketing site and the contact form is a `mailto:` link.
    Owner has not supplied a real address or said whether the form should do
    real submissions.
-6. **No backup system** — specced and approved 2026-07-22, then paused by the
-   owner. See PROJECT-STATUS.md for the agreed shape.
+6. ~~No backup system~~ — **BUILT 2026-07-22.** Backup button in the dashboard
+   header downloads a zip of users+tracking IDs, portal accounts (password
+   hashes only) and all earnings; bot `/portal-admin/backup` → website
+   `/api/admin/backup`. Download only (no import), and the EC2 Baileys
+   `session/` folder is still not backed up. See PROJECT-STATUS.md.
 7. Create-link-from-web (users minting a link in the portal rather than over
    WhatsApp) is the only original v1 exclusion still unbuilt.

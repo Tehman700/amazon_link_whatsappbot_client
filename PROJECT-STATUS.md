@@ -300,17 +300,19 @@ Note these are plain scripts, **not** pytest — run them with `python`, not
   OR migrate (15–20 min: new VM, run `setup.sh`, copy the `session` folder to
   avoid re-pairing, update EC2_* GitHub secrets). Oracle Cloud "Always Free" is
   the $0-forever destination; Lightsail/Hetzner ~$5/mo is the boring-correct one.
-- **No backup system exists** (audited 2026-07-22). All data lives in two
-  separate Neon Postgres databases — the bot's (users, tracking_ids,
-  marketplaces, linked_numbers) and the website's (portal accounts, links,
-  events, earnings, payouts, referrals). The only safety net is Neon's built-in
-  point-in-time restore window, which is short on the free plan; outside it,
-  nothing. A third store has no redundancy at all: the **Baileys session folder
-  on EC2** (`whatsapp-adapter/session/`) — if that instance dies the bot cannot
-  reply until someone re-pairs by QR with the physical phone. A download-backup
-  feature was specced and approved (single .zip: `backup.json` + per-table CSVs,
-  full sensitive fields, raw events, no restore button) but **is not built** —
-  owner paused it on 2026-07-22 to decide later.
+- **Admin backup: BUILT 2026-07-22.** A `Backup` button in the dashboard header
+  (top-left) downloads a single ZIP — bot `GET /portal-admin/backup` (admin
+  token) reads the bot DB (users + tracking IDs) and calls the website
+  `GET /api/admin/backup` (service key) for portal accounts + earnings, then
+  streams `beast-backup-YYYY-MM-DD.zip` (per-table CSVs + `backup.json` master +
+  `README.txt`). If the website is unreachable it returns 503 rather than a
+  half-empty zip. Portal passwords export as PBKDF2 **hashes only** — no
+  plaintext is stored anywhere, so the backup enables a restore but cannot be
+  used to read a password (use Reset PW for that). Download only — no import
+  button. **Still NOT backed up:** the Baileys session folder on EC2
+  (`whatsapp-adapter/session/`) — if that instance dies the bot cannot reply
+  until someone re-pairs by QR. And the two Neon databases otherwise rely only
+  on Neon's built-in point-in-time restore window (short on the free plan).
 - No LLM/AI anywhere — deterministic by spec. **This bot** neither calls PA-API
   nor scrapes; article content is fetched by the separate website project
   (scrape-first, PA-API parked behind `USE_PAAPI=false`), never in this repo.
