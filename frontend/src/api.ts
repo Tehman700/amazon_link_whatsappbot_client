@@ -44,6 +44,33 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return res.json();
 }
 
+// Backup returns a binary ZIP, so it can't go through `request` (which parses
+// JSON). Fetch the blob with the admin token and hand back a filename too.
+export async function downloadBackup(): Promise<{ blob: Blob; filename: string }> {
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(BASE + "/portal-admin/backup", { headers });
+  if (res.status === 401) {
+    setToken(null);
+    window.dispatchEvent(new Event("auth-expired"));
+    throw new Error("Session expired — please log in again");
+  }
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const body = await res.json();
+      if (body.detail) detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new Error(detail);
+  }
+  const blob = await res.blob();
+  const cd = res.headers.get("Content-Disposition") || "";
+  const m = cd.match(/filename="?([^"]+)"?/);
+  return { blob, filename: m ? m[1] : "beast-backup.zip" };
+}
+
 export const api = {
   login: async (username: string, password: string) => {
     const result = await request<{ token: string }>("/auth/login", {

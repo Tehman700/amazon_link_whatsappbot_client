@@ -26,6 +26,33 @@ header h1 {
   font-size: 24px;
 }
 
+/* left cluster: title + Backup button sit together on the top-left */
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-md);
+}
+
+.backup-btn {
+  background: var(--ink);
+  color: var(--on-primary);
+  border: 1px solid var(--ink);
+  border-radius: var(--rounded-lg);
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  min-height: 34px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.backup-btn:hover:not(:disabled) {
+  opacity: 0.88;
+}
+.backup-btn:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
 nav {
   display: flex;
   gap: var(--sp-xl);

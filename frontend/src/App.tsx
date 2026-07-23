@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, hasToken, setToken } from "./api";
+import { api, downloadBackup, hasToken, setToken } from "./api";
 import type { Marketplace, User } from "./types";
 import OverviewView from "./views/OverviewView";
 import UsersView from "./views/UsersView";
@@ -66,10 +66,37 @@ export default function App() {
     setLoaded(false);
   };
 
+  const [backingUp, setBackingUp] = useState(false);
+  const doBackup = async () => {
+    setBackingUp(true);
+    setError(null);
+    try {
+      const { blob, filename } = await downloadBackup();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(`Backup failed: ${(e as Error).message}`);
+    } finally {
+      setBackingUp(false);
+    }
+  };
+
   return (
     <div className="layout">
       <header>
-        <h1>Amazon Affiliate Bot — Admin</h1>
+        <div className="header-left">
+          <h1>Amazon Affiliate Bot — Admin</h1>
+          <button className="backup-btn" onClick={doBackup} disabled={backingUp}
+            title="Download a ZIP backup of users, tracking IDs, portal accounts and earnings">
+            {backingUp ? "Backing up…" : "⭳ Backup"}
+          </button>
+        </div>
         <nav>
           <button
             className={!onPortalAdmin && tab === "overview" ? "active" : ""}

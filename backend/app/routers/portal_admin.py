@@ -7,8 +7,15 @@ numbers, who hasn't signed up yet). Requires HUB_API_URL/HUB_SERVICE_KEY —
 the same env the hub feature already uses.
 """
 
+import csv
+import io
+import json
+import zipfile
+from datetime import datetime, timezone
+
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from .. import models
@@ -18,9 +25,11 @@ from ..hub import HUB_API_URL, HUB_SERVICE_KEY
 router = APIRouter(prefix="/portal-admin", tags=["portal-admin"])
 
 TIMEOUT = 15.0
+BACKUP_TIMEOUT = 60.0  # the website dump can be larger than a normal proxy call
 
 
-def _website(method: str, path: str, json_body: dict | None = None) -> dict:
+def _website(method: str, path: str, json_body: dict | None = None,
+             timeout: float = TIMEOUT) -> dict:
     if not HUB_API_URL:
         raise HTTPException(503, "HUB_API_URL is not configured on this API")
     try:
@@ -29,7 +38,7 @@ def _website(method: str, path: str, json_body: dict | None = None) -> dict:
             f"{HUB_API_URL}{path}",
             json=json_body,
             headers={"X-Service-Key": HUB_SERVICE_KEY},
-            timeout=TIMEOUT,
+            timeout=timeout,
         )
     except httpx.HTTPError as e:
         raise HTTPException(503, f"Website unreachable: {e}")
@@ -83,6 +92,129 @@ async def create_account(request: Request, db: Session = Depends(get_db)):
         "username": str(body.get("username", "")).strip(),
         "password": str(body.get("password", "")),
     })
+
+
+def _csv(rows: list[dict], columns: list[str]) -> str:
+    """A CSV string with a fixed column order (stable even when a row omits a
+    key). utf-8-sig so Excel opens the Unicode correctly."""
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=columns, extrasaction="ignore")
+    writer.writeheader()
+    for r in rows:
+        writer.writerow({c: r.get(c, "") for c in columns})
+    return buf.getvalue()
+
+
+@router.get("/backup")
+def backup(db: Session = Depends(get_db)):
+    """One-click admin backup: bot-side users + tracking IDs joined with the
+    website's portal accounts and earnings, streamed as a single ZIP of CSVs
+    plus a backup.json master. If the website is unreachable the whole thing
+    fails (via _website) rather than handing back a half-empty backup."""
+    web = _website("GET", "/api/admin/backup", timeout=BACKUP_TIMEOUT)
+
+    users = db.query(models.User).order_by(models.User.name).all()
+    marketplaces = {m.id: m for m in db.query(models.Marketplace).all()}
+
+    users_rows = [
+        {"id": u.id, "name": u.name, "whatsapp_number": u.whatsapp_number,
+         "email": u.email or "", "link_preference": u.link_preference,
+         "store_name": u.store_name}
+        for u in users
+    ]
+    tracking_rows = []
+    users_json = []
+    for u in users:
+        tids = []
+        for t in u.tracking_ids:
+            mk = marketplaces.get(t.marketplace_id)
+            row = {
+                "user_id": u.id, "user_name": u.name,
+                "whatsapp_number": u.whatsapp_number,
+                "marketplace_code": mk.code if mk else str(t.marketplace_id),
+                "marketplace_name": mk.name if mk else "", "tag": t.tag,
+            }
+            tracking_rows.append(row)
+            tids.append({"marketplace_code": row["marketplace_code"],
+                         "marketplace_name": row["marketplace_name"], "tag": t.tag})
+        users_json.append({
+            "id": u.id, "name": u.name, "whatsapp_number": u.whatsapp_number,
+            "email": u.email or "", "link_preference": u.link_preference,
+            "store_name": u.store_name, "tracking_ids": tids,
+        })
+
+    generated = datetime.now(timezone.utc).isoformat()
+    master = {
+        "generated_at": generated,
+        "counts": {
+            "users": len(users_rows), "tracking_ids": len(tracking_rows),
+            "portal_accounts": len(web.get("portal_accounts", [])),
+            "earnings_entries": len(web.get("earnings_entries", [])),
+            "payout_records": len(web.get("payout_records", [])),
+            "referrals": len(web.get("referrals", [])),
+        },
+        "users": users_json,
+        "portal_accounts": web.get("portal_accounts", []),
+        "earnings_by_user": web.get("earnings_by_user", []),
+        "earnings_entries": web.get("earnings_entries", []),
+        "payout_records": web.get("payout_records", []),
+        "referrals": web.get("referrals", []),
+        "settings": web.get("settings", {}),
+    }
+
+    readme = (
+        "Beast Affiliates backup\n"
+        f"Generated: {generated}\n\n"
+        "CSV files open in Excel. backup.json is the exact copy used to restore.\n"
+        "portal_accounts.csv 'password_hash' is a one-way PBKDF2 hash, NOT a\n"
+        "readable password (no plaintext password is stored anywhere). It lets\n"
+        "an account be restored with its existing password; to give a user\n"
+        "access use Reset PW in Portal administration.\n\n"
+        "This file holds phone numbers, bank details and password hashes —\n"
+        "keep it private (off shared drives and email).\n"
+    )
+
+    settings = web.get("settings", {})
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("README.txt", readme)
+        z.writestr("users.csv", _csv(
+            users_rows,
+            ["id", "name", "whatsapp_number", "email", "link_preference", "store_name"]))
+        z.writestr("tracking_ids.csv", _csv(
+            tracking_rows,
+            ["user_id", "user_name", "whatsapp_number", "marketplace_code",
+             "marketplace_name", "tag"]))
+        z.writestr("portal_accounts.csv", _csv(
+            web.get("portal_accounts", []),
+            ["id", "username", "password_hash", "whatsapp_number", "created_at",
+             "store_slug", "store_enabled", "bank", "account_title",
+             "account_number", "commission_rate", "orders", "disabled"]))
+        z.writestr("earnings_by_user.csv", _csv(
+            web.get("earnings_by_user", []),
+            ["account_id", "username", "whatsapp_number", "rate", "custom_rate",
+             "earned", "paid", "balance", "entries_count", "referral_total"]))
+        z.writestr("earnings_entries.csv", _csv(
+            web.get("earnings_entries", []),
+            ["id", "account_id", "username", "kind", "gross_amount", "rate_applied",
+             "net_amount", "label", "note", "created_at"]))
+        z.writestr("payouts.csv", _csv(
+            web.get("payout_records", []),
+            ["id", "account_id", "username", "amount", "method", "note", "paid_at"]))
+        z.writestr("referrals.csv", _csv(
+            web.get("referrals", []),
+            ["id", "referrer_account_id", "referrer_username", "referred_name",
+             "amount", "note", "created_at"]))
+        z.writestr("settings.csv", _csv(
+            [settings], ["default_rate", "min_payout"]))
+        z.writestr("backup.json",
+                   json.dumps(master, indent=2, ensure_ascii=False))
+    buf.seek(0)
+
+    fname = f"beast-backup-{datetime.now().strftime('%Y-%m-%d')}.zip"
+    return StreamingResponse(
+        buf, media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
 
 @router.get("/performance")
