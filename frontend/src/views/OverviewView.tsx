@@ -15,8 +15,25 @@ type Cell = { userId: number; field: "name" | "whatsapp_number" | "email" | `mp-
 export default function OverviewView({ users, marketplaces, refresh, onError }: Props) {
   const [editing, setEditing] = useState<Cell | null>(null);
   const [draft, setDraft] = useState("");
+  const [query, setQuery] = useState("");
 
   const totalTags = users.reduce((n, u) => n + u.tracking_ids.length, 0);
+
+  // Search by name or WhatsApp number (case-insensitive; digits-only match on
+  // the number so "3001" finds "+92 300 1..."). Email included as a bonus.
+  const needle = query.trim().toLowerCase();
+  const needleDigits = needle.replace(/\D/g, "");
+  const shown = needle
+    ? users.filter((u) => {
+        const numDigits = u.whatsapp_number.replace(/\D/g, "");
+        return (
+          u.name.toLowerCase().includes(needle) ||
+          (u.email ?? "").toLowerCase().includes(needle) ||
+          u.whatsapp_number.toLowerCase().includes(needle) ||
+          (needleDigits.length > 0 && numDigits.includes(needleDigits))
+        );
+      })
+    : users;
 
   const startEdit = (cell: Cell, current: string) => {
     setEditing(cell);
@@ -112,6 +129,20 @@ export default function OverviewView({ users, marketplaces, refresh, onError }: 
         </div>
       </div>
 
+      <div className="overview-search">
+        <input
+          type="search"
+          placeholder="Search users by name or WhatsApp number…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        {needle && (
+          <span className="muted" style={{ fontSize: 13 }}>
+            {shown.length} of {users.length} user{users.length === 1 ? "" : "s"}
+          </span>
+        )}
+      </div>
+
       <div className="card table-scroll">
         <table className="overview-table">
           <thead>
@@ -127,7 +158,7 @@ export default function OverviewView({ users, marketplaces, refresh, onError }: 
             </tr>
           </thead>
           <tbody>
-            {users.map((user) => {
+            {shown.map((user) => {
               const tags = Object.fromEntries(
                 user.tracking_ids.map((t) => [t.marketplace_id, t.tag]),
               );
@@ -152,6 +183,9 @@ export default function OverviewView({ users, marketplaces, refresh, onError }: 
           </tbody>
         </table>
         {users.length === 0 && <p className="muted">No users yet — add one in the Users tab.</p>}
+        {users.length > 0 && shown.length === 0 && (
+          <p className="muted">No user matches “{query}”.</p>
+        )}
         <p className="muted overview-hint">Click any cell to edit. Enter saves, Esc cancels; clearing a tag removes it.</p>
       </div>
     </section>

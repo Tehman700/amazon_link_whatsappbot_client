@@ -56,6 +56,55 @@ header h1 {
 nav {
   display: flex;
   gap: var(--sp-xl);
+  align-items: center;
+}
+
+/* dark-mode toggle: a sliding switch that lives in the nav */
+.theme-switch {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+}
+.theme-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.theme-track {
+  width: 46px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--soft-cloud);
+  border: 1px solid var(--hairline);
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  transition: background 0.15s ease;
+}
+.theme-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--canvas);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  line-height: 1;
+  transform: translateX(0);
+  transition: transform 0.15s ease;
+}
+.theme-switch input:checked + .theme-track {
+  background: var(--ink);
+}
+.theme-switch input:checked + .theme-track .theme-thumb {
+  transform: translateX(20px);
+}
+.theme-switch input:focus-visible + .theme-track {
+  outline: 2px solid var(--info);
+  outline-offset: 2px;
 }
 
 nav button {
@@ -330,6 +379,17 @@ td.row-actions {
   overflow-x: auto;
 }
 
+.overview-search {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: var(--sp-md);
+}
+.overview-search input {
+  flex: 1 1 auto;
+  max-width: 420px;
+}
+
 .overview-table th,
 .overview-table td {
   font-size: 14px;
@@ -468,8 +528,9 @@ button.btn-red-solid:disabled {
   flex-wrap: wrap;
 }
 .subtabs button {
-  border: 1px solid var(--border, #e5e4e7);
-  background: #fff;
+  border: 1px solid var(--hairline);
+  background: var(--canvas);
+  color: var(--ink);
   padding: 8px 18px;
   border-radius: 999px;
   cursor: pointer;
@@ -487,7 +548,8 @@ button.btn-red-solid:disabled {
   border-radius: 50%;
   object-fit: cover;
   vertical-align: middle;
-  background: #f2eef5;
+  background: var(--soft-cloud);
+  color: var(--ink);
   display: inline-grid;
   place-items: center;
   font-weight: 700;

@@ -16,6 +16,14 @@ export default function App() {
   const [tab, setTab] = useState<Tab>("overview");
   // Real URL route: "/portal-admin" hosts the portal administration page.
   const [route, setRoute] = useState(window.location.pathname);
+  const [theme, setTheme] = useState<"light" | "dark">(
+    () => (localStorage.getItem("admin_theme") === "dark" ? "dark" : "light"),
+  );
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("admin_theme", theme);
+  }, [theme]);
 
   useEffect(() => {
     const onPop = () => setRoute(window.location.pathname);
@@ -129,6 +137,20 @@ export default function App() {
             Portal administration
           </button>
           <button onClick={logout}>Log out</button>
+          <label
+            className="theme-switch"
+            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            <input
+              type="checkbox"
+              checked={theme === "dark"}
+              onChange={(e) => setTheme(e.target.checked ? "dark" : "light")}
+              aria-label="Toggle dark mode"
+            />
+            <span className="theme-track">
+              <span className="theme-thumb">{theme === "dark" ? "🌙" : "☀️"}</span>
+            </span>
+          </label>
         </nav>
       </header>
 

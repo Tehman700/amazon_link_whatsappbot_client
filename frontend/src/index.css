@@ -37,6 +37,25 @@
   text-rendering: optimizeLegibility;
 }
 
+/* Dark mode — the whole panel is built on these tokens, so overriding the
+   neutrals here flips everything. The accent reds/greens stay as-is (they read
+   fine on dark). Toggled via data-theme on <html>. */
+:root[data-theme="dark"] {
+  --ink: #f3f3f4;
+  --canvas: #17181c;
+  --on-primary: #17181c;
+  --soft-cloud: #24262b;
+  --hairline: #3a3c42;
+  --hairline-soft: #2b2d33;
+  --charcoal: #d6d6d9;
+  --mute: #9a9ba1;
+  --stone: #6c6d73;
+  --success: #2fbb7d;
+  --info: #6a92ff;
+  color-scheme: dark;
+  background: var(--canvas);
+}
+
 * {
   box-sizing: border-box;
 }

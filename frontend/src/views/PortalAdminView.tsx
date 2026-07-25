@@ -450,7 +450,7 @@ function NotSignedUpCard({
                   </tr>
                   {openId === u.id && (
                     <tr>
-                      <td colSpan={3} style={{ background: "var(--surface-2, #fafafa)" }}>
+                      <td colSpan={3} style={{ background: "var(--soft-cloud)" }}>
                         <div
                           style={{
                             display: "flex",
