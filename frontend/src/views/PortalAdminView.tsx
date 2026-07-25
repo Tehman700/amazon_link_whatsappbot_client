@@ -682,6 +682,8 @@ function AccountDetail({
         </p>
       </div>
 
+      <UserEarnings accountId={account.id} accounts={accounts} />
+
       {error && <div className="error-box">{error}</div>}
       {!links && !error && <p className="muted">Loading links…</p>}
 
@@ -743,8 +745,6 @@ function AccountDetail({
           </div>
         </>
       )}
-
-      <UserEarnings accountId={account.id} accounts={accounts} />
     </>
   );
 }
