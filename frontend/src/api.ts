@@ -144,6 +144,10 @@ export const portalAdmin = {
     request<{ orders: number }>(`/portal-admin/accounts/${id}/orders`, {
       method: "POST", body: JSON.stringify({ orders }),
     }),
+  setShippedOrders: (id: number, shipped_orders: number) =>
+    request<{ shipped_orders: number }>(`/portal-admin/accounts/${id}/shipped-orders`, {
+      method: "POST", body: JSON.stringify({ shipped_orders }),
+    }),
   unlinkNumber: (number: string) =>
     request<void>(`/portal-admin/linked/${encodeURIComponent(number)}`, { method: "DELETE" }),
   accountLinks: (id: number) =>

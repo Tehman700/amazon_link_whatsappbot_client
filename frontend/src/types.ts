@@ -57,6 +57,7 @@ export interface PortalAdminAccount {
   views: number;
   clicks: number;
   orders: number;
+  shipped_orders: number;
   name: string;
   link_preference: string;
   store_name: string;

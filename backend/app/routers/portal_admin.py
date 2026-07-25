@@ -189,7 +189,8 @@ def backup(db: Session = Depends(get_db)):
             web.get("portal_accounts", []),
             ["id", "username", "password_hash", "whatsapp_number", "created_at",
              "store_slug", "store_enabled", "bank", "account_title",
-             "account_number", "commission_rate", "orders", "disabled"]))
+             "account_number", "commission_rate", "orders", "shipped_orders",
+             "disabled"]))
         z.writestr("earnings_by_user.csv", _csv(
             web.get("earnings_by_user", []),
             ["account_id", "username", "whatsapp_number", "rate", "custom_rate",
@@ -244,6 +245,12 @@ async def set_disabled(account_id: int, request: Request):
 @router.post("/accounts/{account_id}/orders")
 async def set_orders(account_id: int, request: Request):
     return _website("POST", f"/api/admin/accounts/{account_id}/orders",
+                    await request.json())
+
+
+@router.post("/accounts/{account_id}/shipped-orders")
+async def set_shipped_orders(account_id: int, request: Request):
+    return _website("POST", f"/api/admin/accounts/{account_id}/shipped-orders",
                     await request.json())
 
 

@@ -166,6 +166,19 @@ function AccountsTab({
     }
   };
 
+  const editShippedOrders = async (a: PortalAdminAccount) => {
+    const raw = prompt(`Number of shipped orders for @${a.username}:`, String(a.shipped_orders));
+    if (raw === null) return;
+    const n = Number(raw);
+    if (isNaN(n) || n < 0) { onError("Shipped orders must be a number \u2265 0"); return; }
+    try {
+      await portalAdmin.setShippedOrders(a.id, n);
+      refresh();
+    } catch (e) {
+      onError((e as Error).message);
+    }
+  };
+
   const del = async (a: PortalAdminAccount) => {
     if (
       !confirm(
@@ -233,6 +246,7 @@ function AccountsTab({
                 <th>Views</th>
                 <th>Clicks</th>
                 <th>Orders</th>
+                <th>Shipped</th>
                 <th>Balance</th>
                 <th>Signed up</th>
                 <th>Actions</th>
@@ -287,6 +301,11 @@ function AccountsTab({
                   <td>
                     <button className="cell-btn" onClick={() => editOrders(a)} title="Set orders">
                       {a.orders} ✎
+                    </button>
+                  </td>
+                  <td>
+                    <button className="cell-btn" onClick={() => editShippedOrders(a)} title="Set shipped orders">
+                      {a.shipped_orders} ✎
                     </button>
                   </td>
                   <td style={{ whiteSpace: "nowrap" }}>
