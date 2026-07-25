@@ -12,7 +12,7 @@ import type {
   ReferralOut,
 } from "../types";
 
-type SubTab = "accounts" | "linked" | "payouts" | "performance" | "earnings";
+type SubTab = "accounts" | "linked" | "payouts" | "performance";
 
 export default function PortalAdminView() {
   const [sub, setSub] = useState<SubTab>("accounts");
@@ -44,7 +44,6 @@ export default function PortalAdminView() {
             ["linked", "Linked numbers"],
             ["payouts", "Payout details"],
             ["performance", "Overall performance"],
-            ["earnings", "Earnings"],
           ] as [SubTab, string][]
         ).map(([key, label]) => (
           <button
@@ -83,7 +82,6 @@ export default function PortalAdminView() {
       {sub === "linked" && <LinkedTab data={data} refresh={load} onError={setError} />}
       {sub === "payouts" && <PayoutsTab accounts={data.accounts} />}
       {sub === "performance" && <PerformanceTab />}
-      {sub === "earnings" && <EarningsTab />}
     </section>
   );
 }
@@ -102,6 +100,37 @@ function AccountsTab({
   onError: (m: string) => void;
 }) {
   const [detail, setDetail] = useState<PortalAdminAccount | null>(null);
+  // Earnings moved here from the removed Earnings tab: global settings (top),
+  // a Balance column, and the full per-user management inside the detail view.
+  const [earnings, setEarnings] = useState<EarningsOverview | null>(null);
+  const [defRate, setDefRate] = useState("");
+  const [minPayout, setMinPayout] = useState("");
+
+  const loadEarnings = useCallback(() => {
+    portalAdmin
+      .earnings()
+      .then((d) => {
+        setEarnings(d);
+        setDefRate(String(d.settings.default_rate));
+        setMinPayout(String(d.settings.min_payout));
+      })
+      .catch((e) => onError((e as Error).message));
+  }, [onError]);
+  useEffect(loadEarnings, [loadEarnings]);
+
+  const balanceById = new Map((earnings?.users ?? []).map((u) => [u.account_id, u.balance]));
+
+  const saveSettings = async () => {
+    try {
+      await portalAdmin.earningsSettings({
+        default_rate: Number(defRate),
+        min_payout: Number(minPayout),
+      });
+      loadEarnings();
+    } catch (e) {
+      onError((e as Error).message);
+    }
+  };
 
   const resetPw = async (a: PortalAdminAccount) => {
     if (!confirm(`Reset the portal password for @${a.username}?`)) return;
@@ -153,11 +182,39 @@ function AccountsTab({
   };
 
   if (detail) {
-    return <AccountDetail account={detail} back={() => setDetail(null)} />;
+    return (
+      <AccountDetail
+        account={detail}
+        accounts={earnings?.users ?? []}
+        back={() => { setDetail(null); loadEarnings(); }}
+      />
+    );
   }
 
   return (
     <>
+      <div className="card">
+        <h2>Earnings settings</h2>
+        <p className="muted" style={{ marginTop: -6, marginBottom: 10, fontSize: 13 }}>
+          Apply to everyone. A user with no custom rate earns at the default.
+        </p>
+        <div className="form-row">
+          <label className="muted" style={{ fontSize: 13 }}>
+            Default commission rate (%)
+            <input value={defRate} onChange={(e) => setDefRate(e.target.value)}
+              style={{ display: "block", marginTop: 4 }} />
+          </label>
+          <label className="muted" style={{ fontSize: 13 }}>
+            Minimum payout (PKR)
+            <input value={minPayout} onChange={(e) => setMinPayout(e.target.value)}
+              style={{ display: "block", marginTop: 4 }} />
+          </label>
+          <button className="primary" onClick={saveSettings} style={{ alignSelf: "flex-end" }}>
+            Save settings
+          </button>
+        </div>
+      </div>
+
       <div className="card">
         <h2>Portal accounts</h2>
         <p className="muted" style={{ marginTop: -6, marginBottom: 10, fontSize: 13 }}>
@@ -176,6 +233,7 @@ function AccountsTab({
                 <th>Views</th>
                 <th>Clicks</th>
                 <th>Orders</th>
+                <th>Balance</th>
                 <th>Signed up</th>
                 <th>Actions</th>
               </tr>
@@ -230,6 +288,13 @@ function AccountsTab({
                     <button className="cell-btn" onClick={() => editOrders(a)} title="Set orders">
                       {a.orders} ✎
                     </button>
+                  </td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    {balanceById.has(a.id) ? (
+                      <strong>{fmtRs(balanceById.get(a.id) as number)}</strong>
+                    ) : (
+                      <span className="muted">—</span>
+                    )}
                   </td>
                   <td className="muted" style={{ whiteSpace: "nowrap" }}>
                     {new Date(a.created_at).toLocaleDateString()}
@@ -549,9 +614,11 @@ function PayoutsTab({ accounts }: { accounts: PortalAdminAccount[] }) {
 
 function AccountDetail({
   account,
+  accounts,
   back,
 }: {
   account: PortalAdminAccount;
+  accounts: EarningsUserRow[];
   back: () => void;
 }) {
   const [links, setLinks] = useState<PortalAdminLink[] | null>(null);
@@ -676,6 +743,8 @@ function AccountDetail({
           </div>
         </>
       )}
+
+      <UserEarnings accountId={account.id} accounts={accounts} />
     </>
   );
 }
@@ -866,134 +935,9 @@ function recalc(e: EntryEdit): EntryEdit {
   return { ...e, share: String(Math.round((gross * rate) / 100)) };
 }
 
-function EarningsTab() {
-  const [data, setData] = useState<EarningsOverview | null>(null);
-  const [detailId, setDetailId] = useState<number | null>(null);
-  const [error, setError] = useState("");
-  const [defRate, setDefRate] = useState("");
-  const [minPayout, setMinPayout] = useState("");
-
-  const load = useCallback(() => {
-    portalAdmin
-      .earnings()
-      .then((d) => {
-        setData(d);
-        setDefRate(String(d.settings.default_rate));
-        setMinPayout(String(d.settings.min_payout));
-        setError("");
-      })
-      .catch((e) => setError((e as Error).message));
-  }, []);
-
-  useEffect(load, [load]);
-
-  if (error) return <div className="error-box">{error}</div>;
-  if (!data) return <p className="muted">Loading earnings…</p>;
-
-  if (detailId !== null) {
-    return <EarningsDetail accountId={detailId} accounts={data.users} back={() => { setDetailId(null); load(); }} />;
-  }
-
-  const saveSettings = async () => {
-    try {
-      await portalAdmin.earningsSettings({
-        default_rate: Number(defRate),
-        min_payout: Number(minPayout),
-      });
-      load();
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
-
-  const editRate = async (row: { account_id: number; username: string; rate: number }) => {
-    const raw = prompt(
-      `Commission rate %% for @${row.username} (0-100).\nLeave empty to use the default rate.`,
-      String(row.rate),
-    );
-    if (raw === null) return;
-    try {
-      await portalAdmin.setRate(row.account_id, raw.trim() === "" ? null : Number(raw));
-      load();
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
-
-  return (
-    <>
-      <div className="card">
-        <h2>Settings</h2>
-        <div className="form-row">
-          <label className="muted" style={{ fontSize: 13 }}>
-            Default commission rate (%)
-            <input value={defRate} onChange={(e) => setDefRate(e.target.value)} style={{ display: "block", marginTop: 4 }} />
-          </label>
-          <label className="muted" style={{ fontSize: 13 }}>
-            Minimum payout (PKR)
-            <input value={minPayout} onChange={(e) => setMinPayout(e.target.value)} style={{ display: "block", marginTop: 4 }} />
-          </label>
-          <button className="primary" onClick={saveSettings} style={{ alignSelf: "flex-end" }}>
-            Save settings
-          </button>
-        </div>
-      </div>
-
-      <div className="card">
-        <h2>Users</h2>
-        <p className="muted" style={{ marginTop: -6, marginBottom: 10, fontSize: 13 }}>
-          Click Manage to add earnings entries and record payouts.
-        </p>
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>User</th>
-                <th>Rate</th>
-                <th>Earned (share)</th>
-                <th>Paid</th>
-                <th>Balance</th>
-                <th>Entries</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.users.map((u) => (
-                <tr key={u.account_id}>
-                  <td>
-                    <strong>@{u.username}</strong>{" "}
-                    <span className="muted">({u.name})</span>
-                  </td>
-                  <td>
-                    {u.rate}%{" "}
-                    <span className="muted" style={{ fontSize: 11 }}>
-                      {u.custom_rate === null ? "(default)" : "(custom)"}
-                    </span>
-                  </td>
-                  <td>{fmtRs(u.earned)}</td>
-                  <td>{fmtRs(u.paid)}</td>
-                  <td><strong>{fmtRs(u.balance)}</strong></td>
-                  <td>{u.entries_count}</td>
-                  <td className="row-actions">
-                    <button className="cell-btn" onClick={() => editRate(u)}>
-                      Set rate
-                    </button>
-                    <button className="cell-btn" onClick={() => setDetailId(u.account_id)}>
-                      Manage
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {data.users.length === 0 && <p className="muted">No portal accounts yet.</p>}
-      </div>
-    </>
-  );
-}
-
-function EarningsDetail({ accountId, accounts, back }: { accountId: number; accounts: EarningsUserRow[]; back: () => void }) {
+/* The per-user earnings management, rendered inside the account detail page
+   (the standalone Earnings tab was removed). */
+function UserEarnings({ accountId, accounts }: { accountId: number; accounts: EarningsUserRow[] }) {
   const [data, setData] = useState<EarningsDetailData | null>(null);
   const [error, setError] = useState("");
   const [gross, setGross] = useState("");
@@ -1172,14 +1116,26 @@ function EarningsDetail({ accountId, accounts, back }: { accountId: number; acco
     catch (e) { setError((e as Error).message); }
   };
 
+  const editRate = async () => {
+    const raw = prompt(
+      `Commission rate % for @${data.username} (0-100).\nLeave empty to use the default rate.`,
+      data.custom_rate === null ? "" : String(data.rate),
+    );
+    if (raw === null) return;
+    try {
+      await portalAdmin.setRate(accountId, raw.trim() === "" ? null : Number(raw));
+      load();
+    } catch (e) { setError((e as Error).message); }
+  };
+
   return (
     <>
       <div className="card">
-        <button className="cell-btn" onClick={back}>← Back to earnings</button>
-        <h2 style={{ marginTop: 12 }}>@{data.username}</h2>
-        <p className="muted" style={{ fontSize: 13 }}>
+        <h2>Earnings</h2>
+        <p className="muted" style={{ fontSize: 13, marginTop: -4 }}>
           Rate: <strong>{data.rate}%</strong>{" "}
-          {data.custom_rate === null ? "(default)" : "(custom)"}
+          {data.custom_rate === null ? "(default)" : "(custom)"}{" "}
+          <button className="cell-btn" onClick={editRate}>Set rate</button>
           {data.payout_method ? <> · Payout: {data.payout_method}</> : " · No payout details saved"}
         </p>
         <div className="stats">
