@@ -701,6 +701,34 @@ function AccountDetail({
         </p>
       </div>
 
+      <div className="card">
+        <h2>Tracking IDs</h2>
+        <p className="muted" style={{ marginTop: -6, marginBottom: 10, fontSize: 13 }}>
+          The user's affiliate tag per country, synced with the Overview tab —
+          edit these in Overview.
+        </p>
+        {account.tracking_ids.length === 0 ? (
+          <p className="muted">No tracking IDs set for this user yet.</p>
+        ) : (
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr><th>Country</th><th>Marketplace</th><th>Tracking ID</th></tr>
+              </thead>
+              <tbody>
+                {account.tracking_ids.map((t) => (
+                  <tr key={t.marketplace_code}>
+                    <td><span className="badge">{t.marketplace_code}</span></td>
+                    <td className="muted">{t.marketplace_name}</td>
+                    <td>{t.tag ? <code>{t.tag}</code> : <span className="muted">—</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       <UserEarnings accountId={account.id} accounts={accounts} />
 
       {error && <div className="error-box">{error}</div>}

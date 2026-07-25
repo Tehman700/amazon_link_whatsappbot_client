@@ -69,6 +69,14 @@ def list_accounts(db: Session = Depends(get_db)):
         a["link_preference"] = user.link_preference if user else "-"
         a["store_name"] = user.store_name if user else ""
         a["linked_numbers"] = linked_by_user_id.get(user.id, []) if user else []
+        # The user's per-country tracking IDs — the same data as the Overview
+        # grid (bot users table), shown read-only on the detail page.
+        a["tracking_ids"] = (
+            [{"marketplace_code": t.marketplace.code,
+              "marketplace_name": t.marketplace.name, "tag": t.tag}
+             for t in sorted(user.tracking_ids, key=lambda t: t.marketplace.code)]
+            if user else []
+        )
 
     # Registered bot users without a portal account yet — the admin can create
     # one for them from here.

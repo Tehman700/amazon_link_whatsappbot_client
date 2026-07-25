@@ -62,6 +62,7 @@ export interface PortalAdminAccount {
   link_preference: string;
   store_name: string;
   linked_numbers: string[];
+  tracking_ids: { marketplace_code: string; marketplace_name: string; tag: string }[];
 }
 
 export interface PortalAdminData {
