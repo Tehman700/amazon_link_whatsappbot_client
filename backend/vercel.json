@@ -1,4 +1,10 @@
 {
   "builds": [{ "src": "main.py", "use": "@vercel/python" }],
-  "routes": [{ "src": "/(.*)", "dest": "main.py" }]
+  "routes": [{ "src": "/(.*)", "dest": "main.py" }],
+  "crons": [
+    {
+      "path": "/reports/daily-email",
+      "schedule": "0 19 * * *"
+    }
+  ]
 }
