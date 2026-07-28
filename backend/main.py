@@ -9,7 +9,15 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Base, SessionLocal, engine
 from app.models import Marketplace
-from app.routers import auth, marketplaces, portal_admin, process, service, users
+from app.routers import (
+    auth,
+    marketplaces,
+    portal_admin,
+    process,
+    reports,
+    service,
+    users,
+)
 from app.routers.auth import require_admin
 from app.seed import seed
 
@@ -82,6 +90,9 @@ app.include_router(auth.router)
 app.include_router(process.router)
 # /service/* — portal server-to-server, guarded by HUB_SERVICE_KEY inside.
 app.include_router(service.router)
+# /reports/* — scheduled automation (nightly email), guarded by REPORT_KEY
+# inside; deliberately not behind the admin login token.
+app.include_router(reports.router)
 # Admin CRUD requires a login token.
 app.include_router(users.router, dependencies=[Depends(require_admin)])
 app.include_router(marketplaces.router, dependencies=[Depends(require_admin)])
