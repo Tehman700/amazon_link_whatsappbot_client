@@ -93,7 +93,7 @@ async def process_message(payload: schemas.ProcessRequest, db: Session = Depends
 
     # Non-Amazon links (short links, blog/landing pages) -> the Amazon URL
     # they lead to, so they can be swapped for the tagged product link.
-    resolved = await resolve_all(find_urls(payload.text), domain_map)
+    resolved = await resolve_all(find_urls(payload.text), domain_map, db)
 
     new_text, replacements, skipped = process_text(
         payload.text, domain_map, tags, resolved

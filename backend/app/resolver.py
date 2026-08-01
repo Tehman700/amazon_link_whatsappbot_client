@@ -9,13 +9,17 @@ Everything is best-effort with tight timeouts: if a page can't be fetched
 or holds no Amazon link, the original link is simply left untouched.
 """
 
+import asyncio
 import html
+import os
 import re
+import time
 from urllib.parse import urlsplit
 
 import httpx
+from sqlalchemy.orm import Session
 
-from . import hub
+from . import hub, link_cache
 from .rewriter import match_marketplace
 
 # Our own article/redirect links, so a forwarded link gets re-tagged to the
@@ -34,6 +38,17 @@ SHORT_HOSTS = {"amzn.to", "amzn.eu", "amzn.asia", "a.co", "link.amazon"}
 
 MAX_HTML_BYTES = 1_500_000
 REQUEST_TIMEOUT = httpx.Timeout(8.0)
+
+# Blogspot and the WooCommerce storefronts throttle traffic from datacenter IP
+# ranges, which is all a serverless host has. Measured on production, the same
+# page succeeds roughly half the time on any single try, and a refusal comes
+# back in about a second rather than timing out — so a couple of extra tries
+# cost little and turn a coin flip into near-certainty.
+RESOLVE_ATTEMPTS = int(os.getenv("RESOLVE_ATTEMPTS", "3"))
+RETRY_DELAY_SECONDS = float(os.getenv("RESOLVE_RETRY_DELAY", "0.7"))
+# Ceiling on the whole resolve step so a message full of slow links can never
+# push the reply past the serverless limit; whatever is left stays untouched.
+RESOLVE_BUDGET_SECONDS = float(os.getenv("RESOLVE_BUDGET_SECONDS", "25.0"))
 # A bare User-Agent gets refused by some hosts (WooCommerce storefronts return
 # 403, Facebook 400). Sending the rest of what a real browser sends makes those
 # pages return 200 so their Amazon link can be found.
@@ -131,9 +146,15 @@ async def _site_specific(
 
 
 async def resolve_amazon_url(
-    client: httpx.AsyncClient, url: str, domain_map: dict[str, object]
+    client: httpx.AsyncClient,
+    url: str,
+    domain_map: dict[str, object],
+    gone: set[str] | None = None,
 ) -> str | None:
-    """Return the Amazon marketplace URL a non-Amazon link leads to, or None."""
+    """Return the Amazon marketplace URL a non-Amazon link leads to, or None.
+
+    `gone` collects links the host answered about definitively (a deleted blog
+    or post), so the caller knows not to bother retrying them."""
     direct = await _site_specific(client, url, domain_map)
     if direct:
         return direct
@@ -141,6 +162,8 @@ async def resolve_amazon_url(
     response = await _follow(client, url)
     if response is None:
         return None
+    if response.status_code in (404, 410) and gone is not None:
+        gone.add(url)  # the page is deleted, not throttled — retrying is waste
 
     # Case 1: redirects landed directly on a marketplace (amzn.to etc.)
     final_url = str(response.url)
@@ -169,9 +192,12 @@ async def resolve_amazon_url(
 
 
 async def resolve_all(
-    urls: list[str], domain_map: dict[str, object]
+    urls: list[str], domain_map: dict[str, object], db: Session | None = None
 ) -> dict[str, str]:
-    """Resolve every non-Amazon URL in the list; returns {original: amazon_url}."""
+    """Resolve every non-Amazon URL in the list; returns {original: amazon_url}.
+
+    `db` enables the resolution cache; without it every link is fetched live,
+    which is what the offline tests exercise."""
     to_resolve = [
         u
         for u in dict.fromkeys(urls)  # de-dupe, keep order
@@ -181,11 +207,39 @@ async def resolve_all(
         return {}
 
     resolved: dict[str, str] = {}
+    pending: list[str] = []
+    stale: dict[str, str] = {}  # expired hits, kept as a fallback
+    for url in to_resolve:
+        cached, fresh = link_cache.get(db, url) if db is not None else (None, False)
+        if cached and fresh:
+            resolved[url] = cached
+            continue
+        if cached:
+            stale[url] = cached
+        pending.append(url)
+
+    if not pending:
+        return resolved  # every link already known — no network at all
+
+    deadline = time.monotonic() + RESOLVE_BUDGET_SECONDS
+    gone: set[str] = set()
     async with httpx.AsyncClient(
         timeout=REQUEST_TIMEOUT, follow_redirects=True, headers=HEADERS
     ) as client:
-        for url in to_resolve:
-            target = await resolve_amazon_url(client, url, domain_map)
+        for url in pending:
+            target = None
+            for attempt in range(RESOLVE_ATTEMPTS):
+                if time.monotonic() >= deadline:
+                    break  # budget spent — remaining links left untouched
+                target = await resolve_amazon_url(client, url, domain_map, gone)
+                if target or url in gone or attempt + 1 >= RESOLVE_ATTEMPTS:
+                    break
+                await asyncio.sleep(RETRY_DELAY_SECONDS)
             if target:
                 resolved[url] = target
+                if db is not None:
+                    link_cache.put(db, url, target)
+            elif url in stale:
+                # Refresh failed; the remembered answer beats no link at all.
+                resolved[url] = stale[url]
     return resolved
