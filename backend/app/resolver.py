@@ -27,15 +27,30 @@ URL_IN_HTML_RE = re.compile(r"https?://[^\s\"'<>\\]+")
 _TRAILING = ".,;:!?)]}>'\""
 
 # Known Amazon short-link hosts — always worth following their redirect.
-SHORT_HOSTS = {"amzn.to", "amzn.eu", "amzn.asia", "a.co"}
+# `link.amazon` is Amazon's own .amazon-TLD shortener, which affiliate blog
+# templates now use instead of a plain marketplace URL: the page then contains
+# NO amazon.com link at all, so without this the HTML scan finds nothing.
+SHORT_HOSTS = {"amzn.to", "amzn.eu", "amzn.asia", "a.co", "link.amazon"}
 
 MAX_HTML_BYTES = 1_500_000
 REQUEST_TIMEOUT = httpx.Timeout(8.0)
+# A bare User-Agent gets refused by some hosts (WooCommerce storefronts return
+# 403, Facebook 400). Sending the rest of what a real browser sends makes those
+# pages return 200 so their Amazon link can be found.
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
-    )
+    ),
+    "Accept": (
+        "text/html,application/xhtml+xml,application/xml;q=0.9,"
+        "image/avif,image/webp,*/*;q=0.8"
+    ),
+    "Accept-Language": "en-US,en;q=0.9",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Upgrade-Insecure-Requests": "1",
 }
 
 
