@@ -13,7 +13,9 @@ router = APIRouter(tags=["process"])
 # Linking codes use an unambiguous alphabet (no 0/O/1/I) — see the website's
 # code generator. A message must be EXACTLY one code to trigger a claim.
 LINK_CODE_RE = re.compile(r"^[A-HJ-NP-Z2-9]{6}$")
-MAX_NUMBERS_PER_USER = 3  # primary + 2 linked
+# primary + 5 linked. MUST match MAX_WA_NUMBERS in the website's portal.py —
+# the portal shows the allowance and hands out codes, this enforces it on claim.
+MAX_NUMBERS_PER_USER = 6
 
 
 async def _try_link_code(text: str, sender: str, db: Session) -> str | None:
@@ -47,8 +49,8 @@ async def _try_link_code(text: str, sender: str, db: Session) -> str | None:
         .count()
     )
     if 1 + linked_count >= MAX_NUMBERS_PER_USER:
-        return ("You already have the maximum of 3 linked WhatsApp numbers. "
-                "Unlink one in your dashboard first.")
+        return (f"You already have the maximum of {MAX_NUMBERS_PER_USER} WhatsApp "
+                "numbers. Unlink one in your dashboard first.")
     db.add(models.LinkedNumber(user_id=primary.id, whatsapp_number=sender))
     db.commit()
     return ("✅ Linked! This number is now connected to your Beast Affiliates "

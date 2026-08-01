@@ -651,6 +651,8 @@ function AccountDetail({
   }, [account.id]);
 
   const best = (links ?? []).slice().sort((a, b) => b.clicks - a.clicks).slice(0, 5);
+  // The API returns links newest-first, so "recent" is simply the head.
+  const recent = (links ?? []).slice(0, 10);
 
   return (
     <>
@@ -757,7 +759,11 @@ function AccountDetail({
           </div>
 
           <div className="card">
-            <h2>All links ({links.length})</h2>
+            <h2>Recent links</h2>
+            <p className="muted" style={{ marginTop: -6, marginBottom: 10, fontSize: 13 }}>
+              The 10 most recent
+              {links.length > 10 ? <> of {links.length} total</> : null}.
+            </p>
             <div className="table-scroll">
               <table>
                 <thead>
@@ -770,7 +776,7 @@ function AccountDetail({
                   </tr>
                 </thead>
                 <tbody>
-                  {links.map((l) => (
+                  {recent.map((l) => (
                     <tr key={l.id}>
                       <td style={{ maxWidth: 380 }}>
                         <a href={l.article_url} target="_blank" rel="noreferrer">
