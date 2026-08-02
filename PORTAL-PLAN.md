@@ -1,6 +1,6 @@
 # Portal + Hub Pages Plan — "Beast Affiliate" user website
 
-Last updated: 2026-07-22. Companion to [PROJECT-STATUS.md](PROJECT-STATUS.md)
+Last updated: 2026-08-02. Companion to [PROJECT-STATUS.md](PROJECT-STATUS.md)
 (the live bot). This file records the **agreed design for the user-facing
 website module** — decided over 2026-07-15/16 with the owner — plus the full
 build log so any session can resume without re-deriving it.
@@ -184,7 +184,12 @@ harness's file edits — restart the process after editing.
   clean title, cache hit ~0.3s, rating line in article copy. Caveat on
   record: scraping from Vercel datacenter IPs will block more often than from
   a home IP — if production failure rate is high, options are USE_PAAPI=true
-  or a scrape proxy. Repo pushed to
+  or a scrape proxy. **This caveat was confirmed on 2026-08-02**, though for the
+  bot's link *resolver* rather than the article scraper: third-party pages
+  refuse Vercel IPs about half the time, and Facebook refuses them always. The
+  fix shipped there (retry + a permanent resolution cache) is the same shape any
+  future fix here would take — see the Resolver section of PROJECT-STATUS.md
+  before reaching for a paid proxy. Repo pushed to
   github.com/beastaffiliate/beast-affiliates-website (latest changes staged
   locally, commit pending owner push).
 
@@ -285,6 +290,54 @@ harness's file edits — restart the process after editing.
   share, date) — share follows gross × rate live but stays overridable so the
   figure Amazon actually paid can be recorded.
 
+- **Real articles on the marketing site (2026-07-22).** Home and `/articles`
+  stopped rendering hardcoded `DEMO_ARTICLES` and now render real `Link` rows
+  (`web.py:_article_cards`, `site.py`). **One card per product** — the latest
+  article for it, via a `func.max(Link.created_at)` subquery grouped by
+  `product_id` — so the many shares of the same product collapse to one card and
+  the newest floats up. Newest first, revoked links EXCLUDED (owner: hide them,
+  since clicking only reaches the unavailable page). Home shows 6; `/articles`
+  paginates 24/page (`?page=N`, Prev/Next), with an empty state per domain.
+  Per-domain split via `BRANDS[...]["us"]`: beastaffiliates.com lists
+  US-marketplace articles, beastassociate.com every other country — matching
+  `config.article_base` and the `/p/` canonical-domain redirect. The WHOLE card
+  now opens the guide `/p/`; Amazon is reached only through "View on Amazon" →
+  `/go/<id>` → the article creator's own tagged URL. `demo.py` is still alive —
+  it backs the dashboard's logged-out demo, not the homepage.
+
+- **Shipped orders (2026-07-25).** `portal_accounts.shipped_orders`, an
+  admin-set number shown next to orders in the user's portal Earnings tab.
+  Website `POST /api/admin/accounts/{id}/shipped-orders`, proxied by the bot's
+  `/portal-admin/accounts/{id}/shipped-orders`. A Balance column was added to
+  the admin Accounts table at the same time.
+
+- **Earnings merged into the account detail (2026-07-24).** The separate admin
+  Earnings sub-tab was DELETED; a user's earnings now render on their account
+  page, above their links, and the global settings (default rate, min payout)
+  moved to a card at the top of Accounts. Driven by the owner watching himself
+  bounce between two tabs to answer one question about one person. A view-only
+  Tracking IDs card was added to the same page (2026-07-26) for the same reason.
+
+- **WhatsApp number cap 3 → 6 (2026-07-27).** `MAX_WA_NUMBERS` in the website's
+  `portal.py` and `MAX_NUMBERS_PER_USER` in the bot's `routers/process.py`
+  **must stay equal** — the portal shows the allowance and hands out codes, the
+  bot enforces it on claim. The bot's refusal message is built from the
+  constant, so the two cannot disagree in wording (they did briefly: the message
+  said "maximum of 3" while the code allowed 6).
+
+- **Link report endpoint (2026-07-28).** Website
+  `GET /api/admin/link-report?days=N&tz_offset=M` (X-Service-Key) returns
+  per-day, per-sender link counts across ALL senders — not just those with a
+  portal account, which is what `/performance` was limited to. `tz_offset`
+  (minutes ahead of UTC, clamped to ±840) shifts the day boundary so a report
+  fired at PKT midnight does not mix two local days. Consumed by the bot's
+  nightly Vercel Cron email; see PROJECT-STATUS.md.
+
+- **Admin backup endpoint (2026-07-22).** `GET /api/admin/backup` returns portal
+  accounts (password **hashes** only), earnings, entries, payouts, referrals and
+  settings as JSON; the bot merges its own users + tracking IDs and streams the
+  ZIP. See PROJECT-STATUS.md for the full contents.
+
 ## Open items
 
 1. Client's PA-API credentials + marketplace coverage — still unverified.
@@ -306,3 +359,7 @@ harness's file edits — restart the process after editing.
    `session/` folder is still not backed up. See PROJECT-STATUS.md.
 7. Create-link-from-web (users minting a link in the portal rather than over
    WhatsApp) is the only original v1 exclusion still unbuilt.
+8. **Hub is now the majority reply format** — 48 of 60 users on `hub` vs 12 on
+   `direct` (2026-08-02). The fail-safe still holds (a mint failure leaves the
+   tagged Amazon link), but a website outage now degrades most users rather than
+   a handful. Worth remembering before treating this repo as the "optional" one.

@@ -29,7 +29,8 @@ class User(Base):
 class LinkedNumber(Base):
     """Extra WhatsApp numbers linked to a user via the portal's code handshake.
     A linked number behaves exactly like the primary: same tags, preference,
-    and attribution. Cap: 3 numbers total per user (primary + 2 linked)."""
+    and attribution. Cap: MAX_NUMBERS_PER_USER total per user, enforced on
+    claim in routers/process.py (6 since 2026-07-27 — primary + 5 linked)."""
 
     __tablename__ = "linked_numbers"
 

@@ -52,10 +52,28 @@ skipped links (marketplace the sender has no tag for).
 Unknown sender → `404`. No Amazon link → text returned unchanged, `links_replaced: 0`.
 
 **Link resolution:** non-Amazon links are followed automatically — `amzn.to` /
-`a.co` short links (redirects) and landing/blog pages containing a "View on
-Amazon" link (page HTML is fetched and scanned). The original link in the
-message is replaced by the tagged Amazon product link. If a page can't be
+`a.co` / `link.amazon` short links (redirects) and landing/blog pages containing
+a "View on Amazon" link (page HTML is fetched and scanned). The original link in
+the message is replaced by the tagged Amazon product link. If a page can't be
 fetched or holds no Amazon link, it is left untouched.
+
+Because those pages are fetched from a serverless datacenter IP and many hosts
+throttle that traffic, each link is retried a few times and **every successful
+resolution is cached** in `resolved_links`, so a repeat send of the same link
+needs no network at all. Details and the tuning env vars are in
+[PROJECT-STATUS.md](PROJECT-STATUS.md) under Resolver.
+
+## Tests
+
+`backend/tests/` are plain scripts, **not** pytest — run them with `python`
+(collection blows up on their module-level `SystemExit`). Most need a running
+server; `test_canonical.py` and `test_resolve_cache.py` run standalone.
+
+```sh
+cd backend
+python tests/test_resolve_cache.py     # offline: resolver retry + cache
+python tests/test_api.py               # needs a local server + seeded DB
+```
 
 ## The rest of the system
 
