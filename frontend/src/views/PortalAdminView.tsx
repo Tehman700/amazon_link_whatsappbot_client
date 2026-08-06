@@ -14,11 +14,30 @@ import type {
 
 type SubTab = "accounts" | "linked" | "payouts" | "performance";
 
+// Where users sign in. One portal for everyone, whatever article domain their
+// links land on, so this is a constant rather than per-user. Prod builds
+// deliberately avoid Vite env vars (a stray Vercel env var once broke prod).
+const PORTAL_LOGIN_URL = "https://www.beastaffiliates.com/dashboard";
+
+/** The three lines the admin pastes to a user, exactly as the client asked. */
+function loginDetailsText(username: string, pw: string): string {
+  return [
+    `Dashboard Login: ${PORTAL_LOGIN_URL}`,
+    `Username: ${username}`,
+    `Password: ${pw}`,
+  ].join("\n");
+}
+
 export default function PortalAdminView() {
   const [sub, setSub] = useState<SubTab>("accounts");
   const [data, setData] = useState<PortalAdminData | null>(null);
   const [error, setError] = useState("");
-  const [tempPw, setTempPw] = useState<{ username: string; pw: string } | null>(null);
+  // `kind` only changes the wording: a reset password is temporary and the user
+  // is expected to change it, one the admin just chose is not.
+  const [tempPw, setTempPw] = useState<
+    { username: string; pw: string; kind: "created" | "reset" } | null
+  >(null);
+  const [copied, setCopied] = useState("");
 
   const load = useCallback(() => {
     portalAdmin
@@ -58,15 +77,31 @@ export default function PortalAdminView() {
 
       {tempPw && (
         <div className="temp-pw">
-          Temporary password for <strong>@{tempPw.username}</strong>:{" "}
-          <code>{tempPw.pw}</code> — share it with the user; they can change it
-          in their Profile. (Shown once — copy it now.)
+          {tempPw.kind === "reset" ? "Temporary password" : "New account"} for{" "}
+          <strong>@{tempPw.username}</strong>: <code>{tempPw.pw}</code> — share
+          it with the user; they can change it in their Profile. (Shown once —
+          copy it now.)
           <button
             className="cell-btn"
             style={{ marginLeft: 10 }}
-            onClick={() => navigator.clipboard.writeText(tempPw.pw)}
+            onClick={() => {
+              navigator.clipboard.writeText(
+                loginDetailsText(tempPw.username, tempPw.pw),
+              );
+              setCopied("all");
+            }}
           >
-            Copy
+            {copied === "all" ? "Copied ✓" : "Copy all details"}
+          </button>
+          <button
+            className="cell-btn"
+            style={{ marginLeft: 6 }}
+            onClick={() => {
+              navigator.clipboard.writeText(tempPw.pw);
+              setCopied("pw");
+            }}
+          >
+            {copied === "pw" ? "Copied ✓" : "Password only"}
           </button>
         </div>
       )}
@@ -75,7 +110,10 @@ export default function PortalAdminView() {
         <AccountsTab
           data={data}
           refresh={load}
-          onTempPw={(username, pw) => setTempPw({ username, pw })}
+          onTempPw={(username, pw, kind) => {
+            setTempPw({ username, pw, kind });
+            setCopied("");
+          }}
           onError={setError}
         />
       )}
@@ -96,7 +134,7 @@ function AccountsTab({
 }: {
   data: PortalAdminData;
   refresh: () => void;
-  onTempPw: (username: string, pw: string) => void;
+  onTempPw: (username: string, pw: string, kind: "created" | "reset") => void;
   onError: (m: string) => void;
 }) {
   const [detail, setDetail] = useState<PortalAdminAccount | null>(null);
@@ -136,7 +174,7 @@ function AccountsTab({
     if (!confirm(`Reset the portal password for @${a.username}?`)) return;
     try {
       const res = await portalAdmin.resetPassword(a.id);
-      onTempPw(res.username, res.temp_password);
+      onTempPw(res.username, res.temp_password, "reset");
     } catch (e) {
       onError((e as Error).message);
     }
@@ -343,15 +381,16 @@ function AccountsTab({
         rows={data.not_signed_up}
         refresh={refresh}
         onError={onError}
-        onCreated={(username, pw) => onTempPw(username, pw)}
+        onCreated={(username, pw) => onTempPw(username, pw, "created")}
       />
     </>
   );
 }
 
-/* Registered bot users that have no portal account yet. The admin can create
-   one for them here (they pick the username + password themselves and pass it
-   on out-of-band); self-signup still works for everyone else. */
+/* Registered bot users that have no portal account yet. Since 2026-08-06 this
+   is the ONLY way an account is created — self-signup is closed (the portal
+   login asks for a username and password only), so the admin sets both here
+   and passes them on out-of-band via "Copy all details". */
 function NotSignedUpCard({
   rows,
   refresh,
