@@ -128,6 +128,10 @@ export default function PortalAdminView() {
   );
 }
 
+/* Entry kinds the admin enters as a direct amount, i.e. everything except a
+   commission 'earning', which is gross x rate. */
+type OtherKind = "bonus" | "adjustment" | "return";
+
 /* ------------------------------------------------------------ logins tab */
 
 /* Every user who HAS a portal account, with the credentials to hand them.
@@ -1182,7 +1186,7 @@ function fmtRs(n: number) {
   return "Rs " + n.toLocaleString();
 }
 
-type EntryKind = "earning" | "bonus" | "adjustment";
+type EntryKind = "earning" | "bonus" | "adjustment" | "return";
 
 type EntryEdit = {
   id: number; kind: EntryKind; label: string;
@@ -1206,7 +1210,9 @@ function UserEarnings({ accountId, accounts }: { accountId: number; accounts: Ea
   const [gross, setGross] = useState("");
   const [label, setLabel] = useState("");
   const [note, setNote] = useState("");
-  const [otherKind, setOtherKind] = useState<"bonus" | "adjustment">("bonus");
+  const [otherKind, setOtherKind] = useState<OtherKind>("bonus");
+  const [returnCount, setReturnCount] = useState("");
+  const [payOrders, setPayOrders] = useState("");
   const [otherAmount, setOtherAmount] = useState("");
   const [otherLabel, setOtherLabel] = useState("");
   const [payAmount, setPayAmount] = useState("");
@@ -1257,16 +1263,23 @@ function UserEarnings({ accountId, accounts }: { accountId: number; accounts: Ea
     try {
       await portalAdmin.addEntry(accountId, {
         kind: otherKind, net_amount: Number(otherAmount), label: otherLabel,
+        ...(otherKind === "return"
+          ? { orders_count: Number(returnCount) || 0 }
+          : {}),
       });
-      setOtherAmount(""); setOtherLabel("");
+      setOtherAmount(""); setOtherLabel(""); setReturnCount("");
       load();
     } catch (e) { setError((e as Error).message); }
   };
 
   const addPayout = async () => {
     try {
-      await portalAdmin.addPayout(accountId, { amount: Number(payAmount), note: payNote });
-      setPayAmount(""); setPayNote("");
+      await portalAdmin.addPayout(accountId, {
+        amount: Number(payAmount),
+        orders_paid: Number(payOrders) || 0,
+        note: payNote,
+      });
+      setPayAmount(""); setPayOrders(""); setPayNote("");
       load();
     } catch (e) { setError((e as Error).message); }
   };
@@ -1425,17 +1438,31 @@ function UserEarnings({ accountId, accounts }: { accountId: number; accounts: Ea
       </div>
 
       <div className="card">
-        <h2>Add bonus / adjustment</h2>
+        <h2>Add bonus / adjustment / return</h2>
         <p className="muted" style={{ marginTop: -6, fontSize: 13 }}>
-          Direct amounts (no rate applied). Adjustments may be negative — e.g.
-          -500 for an Amazon return clawback.
+          Direct amounts (no rate applied). A <strong>return</strong> always
+          comes off the user's earnings, so the sign does not matter — enter 500
+          or -500 for a 500 clawback and you get the same result. Returned units
+          show as their own figure and do not reduce Total orders.
         </p>
         <div className="form-row">
-          <select value={otherKind} onChange={(e) => setOtherKind(e.target.value as "bonus" | "adjustment")}>
+          <select
+            value={otherKind}
+            onChange={(e) => setOtherKind(e.target.value as OtherKind)}
+          >
             <option value="bonus">Bonus (e.g. referral)</option>
             <option value="adjustment">Adjustment (+/-)</option>
+            <option value="return">Return (always -)</option>
           </select>
           <input placeholder="Amount (PKR)" value={otherAmount} onChange={(e) => setOtherAmount(e.target.value)} />
+          {otherKind === "return" && (
+            <input
+              placeholder="Return orders"
+              value={returnCount}
+              onChange={(e) => setReturnCount(e.target.value)}
+              style={{ maxWidth: 140 }}
+            />
+          )}
           <input placeholder="Label" value={otherLabel} onChange={(e) => setOtherLabel(e.target.value)} />
           <button className="primary" onClick={addOther}>Add</button>
         </div>
@@ -1556,8 +1583,24 @@ function UserEarnings({ accountId, accounts }: { accountId: number; accounts: Ea
 
       <div className="card">
         <h2>Record payout</h2>
+        <p className="muted" style={{ marginTop: -6, fontSize: 13 }}>
+          Both figures come off what the user sees: the amount off their current
+          earnings, the orders off their Total and Shipped orders.{" "}
+          <strong>{data.current_orders}</strong> order
+          {data.current_orders === 1 ? "" : "s"} outstanding
+          {data.orders_entered !== data.current_orders && (
+            <> of {data.orders_entered} entered</>
+          )}
+          . Nothing is overwritten — delete a payout and it all comes back.
+        </p>
         <div className="form-row">
           <input placeholder="Amount (PKR)" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} />
+          <input
+            placeholder="Orders paid"
+            value={payOrders}
+            onChange={(e) => setPayOrders(e.target.value)}
+            style={{ maxWidth: 140 }}
+          />
           <input placeholder="Note (optional)" value={payNote} onChange={(e) => setPayNote(e.target.value)} />
           <button className="primary" onClick={addPayout}>Record payout</button>
         </div>
@@ -1587,6 +1630,7 @@ function UserEarnings({ accountId, accounts }: { accountId: number; accounts: Ea
                         <option value="earning">earning</option>
                         <option value="bonus">bonus</option>
                         <option value="adjustment">adjustment</option>
+                        <option value="return">return</option>
                       </select>
                     </td>
                     <td>
@@ -1664,12 +1708,13 @@ function UserEarnings({ accountId, accounts }: { accountId: number; accounts: Ea
         <div className="table-scroll">
           <table>
             <thead>
-              <tr><th>Amount</th><th>Method</th><th>Note</th><th>Date</th><th></th></tr>
+              <tr><th>Amount</th><th>Orders</th><th>Method</th><th>Note</th><th>Date</th><th></th></tr>
             </thead>
             <tbody>
               {data.payouts.map((pRow) => (
                 <tr key={pRow.id}>
                   <td><strong>{fmtRs(pRow.amount)}</strong></td>
+                  <td>{pRow.orders_paid || <span className="muted">—</span>}</td>
                   <td className="muted">{pRow.method || "—"}</td>
                   <td className="muted">{pRow.note || "—"}</td>
                   <td className="muted" style={{ whiteSpace: "nowrap" }}>{new Date(pRow.paid_at).toLocaleDateString()}</td>

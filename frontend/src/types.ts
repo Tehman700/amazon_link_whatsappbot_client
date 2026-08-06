@@ -118,6 +118,8 @@ export interface EarningsEntryOut {
   gross_amount: number;
   rate_applied: number;
   net_amount: number;
+  /* Units returned — only meaningful on a 'return' entry. */
+  orders_count: number;
   label: string;
   note: string;
   created_at: string;
@@ -126,6 +128,8 @@ export interface EarningsEntryOut {
 export interface PayoutOut {
   id: number;
   amount: number;
+  /* Orders this payout settled; subtracted from the user's order counts. */
+  orders_paid: number;
   method: string;
   note: string;
   paid_at: string;
@@ -136,10 +140,21 @@ export interface EarningsDetailData {
   rate: number;
   custom_rate: number | null;
   payout_method: string;
+  /* Lifetime figures — admin-only. The user is shown current figures only. */
   earned: number;
   paid: number;
+  /* The user's "Current total earnings". */
   balance: number;
   entries_count: number;
+  return_orders: number;
+  returned_amount: number;
+  orders_paid: number;
+  /* Derived: what the admin entered, minus what payouts have settled. */
+  current_orders: number;
+  current_shipped: number;
+  /* The untouched running totals the admin typed from Amazon. */
+  orders_entered: number;
+  shipped_entered: number;
   entries: EarningsEntryOut[];
   payouts: PayoutOut[];
   referrals: ReferralOut[];

@@ -44,6 +44,20 @@ def _website(method: str, path: str, json_body: dict | None = None,
         raise HTTPException(503, f"Website unreachable: {e}")
     if r.status_code == 404:
         raise HTTPException(404, "Not found on website")
+    # 401/403 mean OUR service key is wrong, not that the admin typed something
+    # bad — and forwarding a 401 would log the admin out of the dashboard, which
+    # auto-logs-out on 401. Those stay a 502.
+    if 400 <= r.status_code < 500 and r.status_code not in (401, 403):
+        # Everything else is a validation message written for the admin to read
+        # ("Only 30 order(s) are outstanding"). Flattening it to 502 threw the
+        # reason away and left the dashboard showing a meaningless error.
+        try:
+            detail = (r.json() or {}).get("detail") or ""
+        except ValueError:
+            detail = ""
+        raise HTTPException(
+            r.status_code, detail or f"Website error HTTP {r.status_code}"
+        )
     if r.status_code >= 400:
         raise HTTPException(502, f"Website error HTTP {r.status_code}")
     return r.json() if r.content else {}
