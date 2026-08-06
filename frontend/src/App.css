@@ -555,10 +555,12 @@ button.btn-red-solid:disabled {
   font-weight: 700;
   font-size: 13px;
 }
+/* Credentials banner. Built on --success rather than fixed greens so it holds
+   up in dark mode, where the old #eefaf2 panel stayed stubbornly light. */
 .temp-pw {
-  background: #eefaf2;
-  border: 1px solid #bfe3d0;
-  color: #1e7a45;
+  background: color-mix(in srgb, var(--success) 12%, var(--canvas));
+  border: 1px solid color-mix(in srgb, var(--success) 40%, var(--canvas));
+  color: var(--ink);
   padding: 10px 14px;
   border-radius: 8px;
   margin-bottom: 14px;
@@ -568,4 +570,32 @@ button.btn-red-solid:disabled {
   font-size: 16px;
   font-weight: 700;
   letter-spacing: 1px;
+}
+
+/* Neutral heads-up — not an error, so it must not borrow .error-box's red. */
+.notice {
+  background: var(--soft-cloud);
+  border: 1px solid var(--hairline);
+  color: var(--charcoal);
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+/* Usernames and passwords in the Logins tab: monospace so an l/1 or O/0 can be
+   read off the screen without a second guess. */
+.logins-table td,
+.logins-table th {
+  font-size: 15px;
+  padding: 10px var(--sp-sm);
+}
+.cred {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 15px;
+  letter-spacing: 0.5px;
+  background: var(--soft-cloud);
+  border-radius: 5px;
+  padding: 3px 7px;
+  color: var(--ink);
+  white-space: nowrap;
 }

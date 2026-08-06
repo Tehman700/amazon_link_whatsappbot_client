@@ -5,6 +5,8 @@ import type {
   EarningsEntryOut,
   EarningsOverview,
   EarningsUserRow,
+  LoginRow,
+  LoginsData,
   PerformanceData,
   PortalAdminAccount,
   PortalAdminData,
@@ -12,7 +14,7 @@ import type {
   ReferralOut,
 } from "../types";
 
-type SubTab = "accounts" | "linked" | "payouts" | "performance";
+type SubTab = "accounts" | "logins" | "linked" | "payouts" | "performance";
 
 // Where users sign in. One portal for everyone, whatever article domain their
 // links land on, so this is a constant rather than per-user. Prod builds
@@ -60,6 +62,7 @@ export default function PortalAdminView() {
         {(
           [
             ["accounts", `Accounts (${data.accounts.length})`],
+            ["logins", "Logins"],
             ["linked", "Linked numbers"],
             ["payouts", "Payout details"],
             ["performance", "Overall performance"],
@@ -117,10 +120,178 @@ export default function PortalAdminView() {
           onError={setError}
         />
       )}
+      {sub === "logins" && <LoginsTab />}
       {sub === "linked" && <LinkedTab data={data} refresh={load} onError={setError} />}
       {sub === "payouts" && <PayoutsTab accounts={data.accounts} />}
       {sub === "performance" && <PerformanceTab />}
     </section>
+  );
+}
+
+/* ------------------------------------------------------------ logins tab */
+
+/* Every user who HAS a portal account, with the credentials to hand them.
+   Only accounts appear here — people who were never given one live in the
+   Accounts tab, where they can be created. Passwords are masked until asked
+   for, so the whole list is not sitting in the open during a screen share. */
+function LoginsTab() {
+  const [data, setData] = useState<LoginsData | null>(null);
+  const [error, setError] = useState("");
+  const [q, setQ] = useState("");
+  const [shown, setShown] = useState<Set<number>>(new Set());
+  const [copied, setCopied] = useState<number | null>(null);
+
+  useEffect(() => {
+    portalAdmin
+      .logins()
+      .then((d) => {
+        setData(d);
+        setError("");
+      })
+      .catch((e) => setError((e as Error).message));
+  }, []);
+
+  if (error) return <div className="error-box">{error}</div>;
+  if (!data) return <p className="muted">Loading logins…</p>;
+
+  const toggle = (id: number) =>
+    setShown((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const copyRow = (r: LoginRow) => {
+    navigator.clipboard.writeText(loginDetailsText(r.username, r.password));
+    setCopied(r.account_id);
+    window.setTimeout(() => setCopied(null), 1500);
+  };
+
+  const needle = q.trim().toLowerCase();
+  const rows = needle
+    ? data.accounts.filter(
+        (r) =>
+          r.username.toLowerCase().includes(needle) ||
+          r.name.toLowerCase().includes(needle) ||
+          r.whatsapp_number.includes(needle),
+      )
+    : data.accounts;
+
+  const known = data.accounts.filter((r) => r.password).length;
+
+  return (
+    <div className="card" style={{ marginTop: 18 }}>
+      <h2>Logins ({data.accounts.length})</h2>
+      <p className="muted" style={{ marginTop: -6, marginBottom: 12, fontSize: 13 }}>
+        Everyone who has a portal account, and what to send them. Copy gives the
+        dashboard link, username and password ready to paste.
+      </p>
+
+      {!data.storage_enabled && (
+        <div className="notice" style={{ marginBottom: 12 }}>
+          Password storage is off (CREDENTIAL_KEY is not set), so passwords
+          issued from now on cannot be shown here. Use Reset PW in the Accounts
+          tab to issue one you can copy.
+        </div>
+      )}
+
+      {data.accounts.length > 10 && (
+        <input
+          style={{ maxWidth: 280, marginBottom: 12 }}
+          placeholder="Search name, username or number…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+      )}
+
+      {data.accounts.length === 0 ? (
+        <p className="muted">
+          No portal accounts yet — create one from the Accounts tab.
+        </p>
+      ) : (
+        <div className="table-scroll">
+          <table className="logins-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Username</th>
+                <th>Password</th>
+                <th style={{ width: 150 }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.account_id}>
+                  <td>
+                    {r.name || <span className="muted">—</span>}
+                    {r.disabled && (
+                      <span className="muted" style={{ fontSize: 12 }}>
+                        {" "}
+                        (disabled)
+                      </span>
+                    )}
+                    <div className="muted" style={{ fontSize: 12 }}>
+                      {r.whatsapp_number}
+                    </div>
+                  </td>
+                  <td>
+                    <code className="cred">{r.username}</code>
+                  </td>
+                  <td>
+                    {r.password ? (
+                      <code className="cred">
+                        {shown.has(r.account_id) ? r.password : "••••••••••"}
+                      </code>
+                    ) : (
+                      <span className="muted" style={{ fontSize: 13 }}>
+                        {r.has_stored
+                          ? "Stored under a previous key — reset it to issue a new one"
+                          : "Changed by user — reset it to issue a new one"}
+                      </span>
+                    )}
+                  </td>
+                  <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                    {r.password && (
+                      <>
+                        <button
+                          className="cell-btn"
+                          onClick={() => toggle(r.account_id)}
+                        >
+                          {shown.has(r.account_id) ? "Hide" : "Show"}
+                        </button>
+                        <button
+                          className="cell-btn"
+                          style={{ marginLeft: 6 }}
+                          onClick={() => copyRow(r)}
+                        >
+                          {copied === r.account_id ? "Copied ✓" : "Copy"}
+                        </button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="muted">
+                    No match for “{q}”.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {data.storage_enabled && known < data.accounts.length && (
+        <p className="muted" style={{ marginTop: 10, fontSize: 13 }}>
+          {data.accounts.length - known} of {data.accounts.length} have set their
+          own password since, so it can no longer be shown here — that is
+          working as intended, not a fault.
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -408,12 +579,12 @@ function NotSignedUpCard({
   const [busy, setBusy] = useState(false);
   const [q, setQ] = useState("");
 
-  const suggest = (name: string) =>
-    name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 32);
-
+  // Deliberately no suggested username: pre-filling one from the person's name
+  // meant the admin had to clear the box before typing, and a half-edited
+  // suggestion could be saved by accident.
   const open = (u: { id: number; name: string }) => {
     setOpenId(u.id);
-    setUsername(suggest(u.name));
+    setUsername("");
     setPassword("");
   };
 

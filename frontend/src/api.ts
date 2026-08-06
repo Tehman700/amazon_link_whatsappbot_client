@@ -124,6 +124,7 @@ export const api = {
 import type {
   EarningsDetailData,
   EarningsOverview,
+  LoginsData,
   PerformanceData,
   PortalAdminData,
   PortalAdminLink,
@@ -154,6 +155,9 @@ export const portalAdmin = {
     request<{ links: PortalAdminLink[] }>(`/portal-admin/accounts/${id}/links`),
   performance: (days: number) =>
     request<PerformanceData>(`/portal-admin/performance?days=${days}`),
+  // Fetched only when the Logins tab is opened — passwords should not ride
+  // along on every dashboard load.
+  logins: () => request<LoginsData>("/portal-admin/logins"),
 
   earnings: () => request<EarningsOverview>("/portal-admin/earnings"),
   earningsSettings: (body: { default_rate?: number; min_payout?: number }) =>

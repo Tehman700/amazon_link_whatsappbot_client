@@ -236,6 +236,19 @@ def performance(days: int = 30, db: Session = Depends(get_db)):
     return data
 
 
+@router.get("/logins")
+def logins(db: Session = Depends(get_db)):
+    """Credentials for every existing portal account, for the Logins tab.
+    Merged with the bot-side display name so the admin can find a person by the
+    name they know them by rather than the username they were given."""
+    data = _website("GET", "/api/admin/logins")
+    users_by_number = {u.whatsapp_number: u for u in db.query(models.User).all()}
+    for row in data.get("accounts", []):
+        user = users_by_number.get(row["whatsapp_number"])
+        row["name"] = user.name if user else ""
+    return data
+
+
 @router.post("/accounts/{account_id}/reset-password")
 def reset_password(account_id: int):
     return _website("POST", f"/api/admin/accounts/{account_id}/reset-password")

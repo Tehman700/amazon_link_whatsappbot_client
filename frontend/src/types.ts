@@ -152,3 +152,24 @@ export interface ReferralOut {
   note: string;
   created_at: string;
 }
+
+/* Credentials for the Portal administration -> Logins tab. `password` is empty
+   when the user has since set their own — the tab shows that as "changed by
+   user" rather than a blank, because a blank reads as "no password". */
+export interface LoginRow {
+  account_id: number;
+  username: string;
+  whatsapp_number: string;
+  name: string;
+  password: string;
+  /* True when a password IS stored but could not be read — i.e. the key was
+     rotated. Distinct from nothing stored, which means the user changed it. */
+  has_stored: boolean;
+  disabled: boolean;
+  created_at: string;
+}
+
+export interface LoginsData {
+  storage_enabled: boolean;
+  accounts: LoginRow[];
+}
