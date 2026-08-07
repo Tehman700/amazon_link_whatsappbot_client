@@ -1030,6 +1030,7 @@ function PerformanceTab() {
   const [days, setDays] = useState(30);
   const [metric, setMetric] = useState<Metric>("clicks");
   const [data, setData] = useState<PerformanceData | null>(null);
+  const [money, setMoney] = useState<EarningsOverview["totals"] | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -1040,8 +1041,52 @@ function PerformanceTab() {
       .catch((e) => setError((e as Error).message));
   }, [days]);
 
+  // Loaded once, outside the day filter: money owed is a running total, not
+  // something that happened inside a 7-day window.
+  useEffect(() => {
+    portalAdmin
+      .earnings()
+      .then((d) => setMoney(d.totals))
+      .catch(() => setMoney(null));
+  }, []);
+
   if (error) return <div className="error-box">{error}</div>;
-  if (!data) return <p className="muted">Loading performance…</p>;
+
+  const moneyCard = money && (
+    <div className="card">
+      <h2>Money</h2>
+      <p className="muted" style={{ marginTop: -6, fontSize: 13 }}>
+        Across every user, all time — the date filter below does not apply to
+        these.
+      </p>
+      <div className="stats">
+        <div className="stat">
+          <div className="stat-number">{fmtRs(money.to_be_paid)}</div>
+          To be paid
+        </div>
+        <div className="stat">
+          <div className="stat-number">{fmtRs(money.paid)}</div>
+          Paid
+        </div>
+      </div>
+      {money.overdrawn_users > 0 && (
+        <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
+          {money.overdrawn_users} user
+          {money.overdrawn_users === 1 ? " has" : "s have"} been paid more than
+          they have earned; they count as zero above rather than reducing the
+          total, since one person's overpayment cannot fund another's.
+        </p>
+      )}
+    </div>
+  );
+
+  if (!data)
+    return (
+      <>
+        {moneyCard}
+        <p className="muted">Loading performance…</p>
+      </>
+    );
 
   const users = data.per_user
     .slice()
@@ -1051,6 +1096,7 @@ function PerformanceTab() {
 
   return (
     <>
+      {moneyCard}
       <div className="card">
         <div className="form-row" style={{ marginBottom: 6 }}>
           <select value={days} onChange={(e) => setDays(Number(e.target.value))}>

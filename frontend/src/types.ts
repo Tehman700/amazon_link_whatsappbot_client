@@ -110,6 +110,13 @@ export interface EarningsUserRow {
 export interface EarningsOverview {
   settings: { default_rate: number; min_payout: number };
   users: EarningsUserRow[];
+  /* All-time across every user, deliberately not affected by any date filter:
+     what is owed right now, and what has been sent in total. */
+  totals: {
+    to_be_paid: number;
+    paid: number;
+    overdrawn_users: number;
+  };
 }
 
 export interface EarningsEntryOut {
