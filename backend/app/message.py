@@ -276,7 +276,10 @@ def _bare_keyword(lines: list[str]) -> str:
 
 # ------------------------------------------------------------- the reply
 
-BRANDING = "\U0001F43B Beast"
+# Signed at the end of everything the bot composes. Defined once: the layout,
+# the search replies and the bilingual explanations all use this, so the mark
+# changes everywhere at once. (Was a bear; the client moved to sparkles.)
+BRANDING = "✨ Beast"
 
 
 def format_task_reply(parsed: Parsed, link: str, country_code: str | None,
