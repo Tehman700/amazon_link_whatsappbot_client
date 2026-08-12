@@ -167,5 +167,49 @@ check("a seller name ending in -US does not decide the country",
       message.parse("Sold by...Viconor-US\nKeyword...lamp").country is None,
       "only 'Usa review' should set the country in message 1")
 
+# ------------------------------- nothing the sender wrote is thrown away
+# From live traffic: a store name written a way we do not recognise, and a
+# buyer instruction that is the whole point of the message. Both used to vanish.
+REAL_3 = (
+    "Location     UK\n"
+    "Keywords: Fungal Nail Treatment for Toenails Extra Strong\n"
+    "Price: 9.99\n"
+    "Store Name: Putianchengxiangpeiman Trading Co., Ltd.\n\n"
+    "https://lexofinds.blogspot.com/2026/07/fungal-nail-treatment-for.html\n\n"
+    "Must order through link otherwise not accept cancel"
+)
+p3 = message.parse(REAL_3)
+check("recognised fields still read", p3.fields.get("price") == "9.99", p3.fields)
+check("an unknown label is carried, not dropped",
+      any("Store Name" in x for x in p3.extra), p3.extra)
+check("the sender's own instruction is carried",
+      any("Must order through link" in x for x in p3.extra), p3.extra)
+
+reply3 = message.format_task_reply(p3, "https://www.amazon.co.uk/dp/B0H28DCVYF?tag=t", "UK")
+check("carried text sits after the link",
+      reply3.index("Must order through link") > reply3.index("Link:"), reply3)
+check("carried text sits above the sign-off",
+      reply3.index("Must order through link") < reply3.index(message.BRANDING), reply3)
+
+# the one that would cost real money if it were wrong
+check("the sender's original link is NOT echoed back",
+      "lexofinds.blogspot.com" not in reply3,
+      "echoing it hands the buyer an untagged route to the product")
+check("a line that was only a link carries nothing",
+      not any("http" in x for x in p3.extra), p3.extra)
+
+# no duplication of what is already formatted above
+p4 = message.parse("USA\nYoga Mat")
+check("a line that is only the country is not repeated", p4.extra == [], p4.extra)
+p5 = message.parse("Country: USA\nKeyword: Fitness Tracker")
+check("recognised field lines are not repeated", p5.extra == [], p5.extra)
+p6 = message.parse("Usa review\nKeyword: Lamp")
+check("a country line with other words keeps those words",
+      any("review" in x for x in p6.extra), p6.extra)
+
+flood = message.parse("Keyword: x\n" + "\n".join(f"line {i}" for i in range(40)))
+check("a pasted essay cannot flood the reply",
+      len(flood.extra) <= message.MAX_CARRY_LINES, len(flood.extra))
+
 print(f"\n{passed} passed, {failed} failed")
 raise SystemExit(1 if failed else 0)

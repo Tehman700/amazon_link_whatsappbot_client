@@ -144,11 +144,16 @@ class Parsed:
     """What could be understood from one message."""
 
     def __init__(self, country: str | None, keyword: str, fields: dict[str, str],
-                 labelled_keys: set[str]):
+                 labelled_keys: set[str], extra: list[str] | None = None):
         self.country = country
         self.keyword = keyword
         self.fields = fields
         self.labelled_keys = labelled_keys
+        # Everything the sender wrote that did not become a field. Carried into
+        # the reply verbatim rather than dropped: a line like "Must order
+        # through link otherwise not accept cancel" is the whole point of the
+        # message, and there is no chance of recognising every way people write.
+        self.extra = extra or []
 
     @property
     def is_task(self) -> bool:
@@ -171,13 +176,19 @@ def parse(text: str) -> Parsed:
     country: str | None = None
 
     lines = text.splitlines()
-    for line in lines:
+    # Line numbers whose content already appears in the formatted reply. What is
+    # left over is carried through untouched, so nothing the sender wrote is
+    # thrown away just because it was not recognised.
+    consumed: set[int] = set()
+
+    for i, line in enumerate(lines):
         m = _LINE_RE.match(line)
         if not m:
             continue
         key = _label_key(m.group(1))
         if key is None:
-            continue
+            continue  # unknown label — carried over verbatim, not dropped
+        consumed.add(i)
         value = m.group(2).strip()
         labelled.add(key)
         if key == "country":
@@ -197,15 +208,24 @@ def parse(text: str) -> Parsed:
     # Still nothing: a country written among other words, as in "USA\nFitness
     # Tracker" or "Usa review".
     if country is None:
-        for line in lines:
+        for i, line in enumerate(lines):
             hit = _country_in_line(line)
             if hit:
                 country = hit
+                # Only swallow the line when it is nothing BUT the country;
+                # "Usa review" keeps its other word rather than losing it.
+                if _match_country(line.strip(), labelled=False):
+                    consumed.add(i)
                 break
 
     keyword = fields.get("keyword", "")
     if not keyword:
         keyword = _bare_keyword(lines)
+        if keyword:
+            for i, line in enumerate(lines):
+                if line.strip() == keyword:
+                    consumed.add(i)
+                    break
     if keyword:
         fields.setdefault("keyword", keyword)
 
@@ -214,8 +234,43 @@ def parse(text: str) -> Parsed:
         m = _REQUIRE_RE.search(text)
         if m:
             fields["require"] = m.group(1).title()
+            for i, line in enumerate(lines):
+                if _REQUIRE_RE.search(line):
+                    consumed.add(i)
+                    break
 
-    return Parsed(country, keyword, fields, labelled)
+    return Parsed(country, keyword, fields, labelled,
+                  extra=_carry_over(lines, consumed))
+
+
+# Generous ceilings. They exist only to stop a pasted essay turning one reply
+# into a wall of text; real messages are nowhere near them.
+MAX_CARRY_LINES = 20
+MAX_CARRY_CHARS = 300
+
+_URL_IN_LINE_RE = re.compile(r"https?://\S+", re.IGNORECASE)
+
+
+def _carry_over(lines: list[str], consumed: set[int]) -> list[str]:
+    """Whatever the sender wrote that is not already in the formatted reply.
+
+    URLs are stripped out. Echoing the original link back would hand the buyer
+    a route to the product that carries no affiliate tag — which is exactly
+    what the "must order through link" instruction in these messages exists to
+    prevent, so repeating it would defeat the sender's own purpose.
+    """
+    out: list[str] = []
+    for i, line in enumerate(lines):
+        if i in consumed:
+            continue
+        cleaned = _URL_IN_LINE_RE.sub("", line).strip()
+        # A line that was only a link leaves nothing worth carrying.
+        if not cleaned:
+            continue
+        out.append(cleaned[:MAX_CARRY_CHARS])
+        if len(out) >= MAX_CARRY_LINES:
+            break
+    return out
 
 
 def _country_in_line(line: str) -> str | None:
@@ -312,6 +367,11 @@ def format_task_reply(parsed: Parsed, link: str, country_code: str | None,
         out.append(f"\U0001F517 Link: {link}")
     if note:
         out.append(note)
+    if parsed.extra:
+        # Last, just above the sign-off: anything the sender wrote that did not
+        # map to a field — their own instructions, a store name written a way
+        # we do not recognise, a note for the buyer.
+        out.append("\n".join(parsed.extra))
 
     out.append(BRANDING)
     return "\n\n".join(out)
