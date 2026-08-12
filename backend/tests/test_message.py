@@ -207,9 +207,15 @@ p6 = message.parse("Usa review\nKeyword: Lamp")
 check("a country line with other words keeps those words",
       any("review" in x for x in p6.extra), p6.extra)
 
-flood = message.parse("Keyword: x\n" + "\n".join(f"line {i}" for i in range(40)))
-check("a pasted essay cannot flood the reply",
-      len(flood.extra) <= message.MAX_CARRY_LINES, len(flood.extra))
+# No cap: however much the sender wrote comes back. Truncating would mean
+# choosing which of their words to discard, which is what this exists to stop.
+long_msg = message.parse("Keyword: x\n" + "\n".join(f"line {i}" for i in range(40)))
+check("every line is carried, however many", len(long_msg.extra) == 40, len(long_msg.extra))
+check("the last line survives", long_msg.extra[-1] == "line 39", long_msg.extra[-1])
+
+wordy = "w" * 2000
+check("a very long line is carried whole",
+      message.parse(f"Keyword: x\n{wordy}").extra == [wordy])
 
 print(f"\n{passed} passed, {failed} failed")
 raise SystemExit(1 if failed else 0)

@@ -243,11 +243,6 @@ def parse(text: str) -> Parsed:
                   extra=_carry_over(lines, consumed))
 
 
-# Generous ceilings. They exist only to stop a pasted essay turning one reply
-# into a wall of text; real messages are nowhere near them.
-MAX_CARRY_LINES = 20
-MAX_CARRY_CHARS = 300
-
 _URL_IN_LINE_RE = re.compile(r"https?://\S+", re.IGNORECASE)
 
 
@@ -258,6 +253,10 @@ def _carry_over(lines: list[str], consumed: set[int]) -> list[str]:
     a route to the product that carries no affiliate tag — which is exactly
     what the "must order through link" instruction in these messages exists to
     prevent, so repeating it would defeat the sender's own purpose.
+
+    Length is deliberately not capped: whatever the sender wrote comes back,
+    however long. Truncating would mean choosing which of their words to throw
+    away, which is the problem this exists to solve.
     """
     out: list[str] = []
     for i, line in enumerate(lines):
@@ -267,9 +266,7 @@ def _carry_over(lines: list[str], consumed: set[int]) -> list[str]:
         # A line that was only a link leaves nothing worth carrying.
         if not cleaned:
             continue
-        out.append(cleaned[:MAX_CARRY_CHARS])
-        if len(out) >= MAX_CARRY_LINES:
-            break
+        out.append(cleaned)
     return out
 
 
