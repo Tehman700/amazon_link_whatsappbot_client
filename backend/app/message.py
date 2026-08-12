@@ -63,6 +63,24 @@ COUNTRY_WORDS = {
 # would silently send someone to amazon.it.
 _AMBIGUOUS_BARE = {"us", "it", "de", "es", "ca", "au", "fr", "nl", "gb"}
 
+# Words safe to spot INSIDE a line of other words, as in "Usa review". The
+# two-letter codes and the adjectives ("german", "italian") are left out on
+# purpose: those turn up inside ordinary sentences and product titles, and
+# picking the wrong country here sends someone to the wrong marketplace with
+# the wrong tag, which costs real money.
+_STRONG_COUNTRY_WORDS = {
+    w: c for w, c in COUNTRY_WORDS.items()
+    if w not in _AMBIGUOUS_BARE
+    and w not in {"states", "german", "french", "italian", "spanish", "dutch",
+                  "canadian", "aussie"}
+}
+
+# How a country is named in the reply when the sender did not spell it out.
+COUNTRY_DISPLAY = {
+    "US": "USA", "UK": "UK", "CA": "Canada", "DE": "Germany", "FR": "France",
+    "IT": "Italy", "ES": "Spain", "NL": "Netherlands", "AU": "Australia",
+}
+
 
 def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9]", "", s.lower())
@@ -103,8 +121,13 @@ FIELDS: list[tuple[str, str, str, tuple[str, ...]]] = [
 _LABEL_TO_KEY = {syn: key for key, _, _, syns in FIELDS for syn in syns}
 _ALL_LABELS = list(_LABEL_TO_KEY)
 
-# A line like "Sold By: Smart Gathering" or "Keyword - Fitness Tracker".
-_LINE_RE = re.compile(r"^\s*([A-Za-z][A-Za-z .%_]{1,24}?)\s*[:\-–—]\s*(.*)$")
+# A line like "Sold By: Smart Gathering", "Keyword - Fitness Tracker", or
+# "Price...67.99". The run of dots is not a stylistic detail: it is what the
+# client's own forwarded messages actually use, and only accepting colons meant
+# every one of those fields was invisible to us.
+_LINE_RE = re.compile(
+    r"^\s*([A-Za-z][A-Za-z .%_]{1,24}?)\s*(?::|[-–—]|\.{2,}|…)\s*(.*)$"
+)
 
 
 def _label_key(raw: str) -> str | None:
@@ -171,12 +194,11 @@ def parse(text: str) -> Parsed:
                 country = code
                 break
 
-    # Still nothing: a country sitting on its own line, as in "USA\nFitness
-    # Tracker". Whole lines only — a country word inside a sentence is far too
-    # easy to hit by accident.
+    # Still nothing: a country written among other words, as in "USA\nFitness
+    # Tracker" or "Usa review".
     if country is None:
         for line in lines:
-            hit = _match_country(line.strip(), labelled=False)
+            hit = _country_in_line(line)
             if hit:
                 country = hit
                 break
@@ -187,7 +209,45 @@ def parse(text: str) -> Parsed:
     if keyword:
         fields.setdefault("keyword", keyword)
 
+    # "need text review" on its own line is the requirement, just without a label.
+    if "require" not in fields:
+        m = _REQUIRE_RE.search(text)
+        if m:
+            fields["require"] = m.group(1).title()
+
     return Parsed(country, keyword, fields, labelled)
+
+
+def _country_in_line(line: str) -> str | None:
+    """A country named anywhere in one line.
+
+    The whole line is tried first, so "united kingdom" still works. Failing
+    that, individual words are checked against the strong list only — "Usa
+    review" resolves, "is it in stock" does not.
+    """
+    stripped = line.strip()
+    whole = _match_country(stripped, labelled=False)
+    if whole:
+        return whole
+
+    words = [w.lower() for w in re.findall(r"[A-Za-z]+", stripped)]
+    for word in words:
+        if word in _STRONG_COUNTRY_WORDS:
+            return _STRONG_COUNTRY_WORDS[word]
+    # "United States" / "Great Britain" arrive as two words.
+    for a, b in zip(words, words[1:]):
+        pair = a + b
+        if pair in _STRONG_COUNTRY_WORDS:
+            return _STRONG_COUNTRY_WORDS[pair]
+    return None
+
+
+# "need text review", "video review" — the requirement written without a label.
+# Anchored on the kind of review so an unrelated line saying "review" is not
+# mistaken for one.
+_REQUIRE_RE = re.compile(
+    r"\b((?:text|video|photo|image|picture|written)\s+review)\b", re.IGNORECASE
+)
 
 
 def _bare_keyword(lines: list[str]) -> str:
@@ -219,13 +279,19 @@ def _bare_keyword(lines: list[str]) -> str:
 BRANDING = "\U0001F43B Beast"
 
 
-def format_task_reply(parsed: Parsed, link: str, country_code: str | None) -> str:
+def format_task_reply(parsed: Parsed, link: str, country_code: str | None,
+                      note: str = "") -> str:
     """The client's template. Fields the sender did not provide are left out
-    entirely rather than printed empty."""
+    entirely rather than printed empty.
+
+    `note` goes between the link and the branding — it carries the search-link
+    disclaimer, which is needed just as much when a task message resolves to a
+    search as when a bare keyword does."""
     out: list[str] = []
 
     if country_code:
-        shown = parsed.fields.get("country") or country_code
+        shown = (parsed.fields.get("country")
+                 or COUNTRY_DISPLAY.get(country_code, country_code))
         flag = CODE_TO_FLAG.get(country_code, "")
         out.append(f"\U0001F310 Country: {shown}{(' ' + flag) if flag else ''}")
 
@@ -241,6 +307,8 @@ def format_task_reply(parsed: Parsed, link: str, country_code: str | None) -> st
 
     if link:
         out.append(f"\U0001F517 Link: {link}")
+    if note:
+        out.append(note)
 
     out.append(BRANDING)
     return "\n\n".join(out)

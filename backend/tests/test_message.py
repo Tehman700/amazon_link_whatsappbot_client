@@ -115,5 +115,57 @@ u = message.search_url("amazon.com", "Fitness Tracker", "beast-20")
 check("search link is tagged and escaped",
       u == "https://www.amazon.com/s?k=Fitness+Tracker&tag=beast-20", u)
 
+# ---------------------------------------- the client's real forwarded messages
+# Copied from a screenshot of live traffic. Both were answered with silence:
+# the fields use "..." rather than a colon, and the country sits on a line with
+# another word, so nothing at all was recognised.
+
+REAL_1 = ("Sold by...Viconor-US\n\nKeyword...red light therapy for body\n\n"
+          "Price...67.99\n\nUsa review")
+REAL_2 = ("Sold by...Smart Gathering\n\nKeyword...fitness tracker\n\n"
+          "Price...39.99\n\nUSA review\nneed text review")
+
+p1 = message.parse(REAL_1)
+check("real message 1: country found on a line with another word", p1.country == "US", p1)
+check("real message 1: keyword read through the dots",
+      p1.keyword == "red light therapy for body", p1)
+check("real message 1: seller read", p1.fields.get("sold_by") == "Viconor-US", p1.fields)
+check("real message 1: price read", p1.fields.get("price") == "67.99", p1.fields)
+check("real message 1: recognised as a task", p1.is_task, p1)
+
+p2 = message.parse(REAL_2)
+check("real message 2: country found", p2.country == "US", p2)
+check("real message 2: keyword read", p2.keyword == "fitness tracker", p2)
+check("real message 2: seller read", p2.fields.get("sold_by") == "Smart Gathering", p2.fields)
+check("real message 2: unlabelled requirement read",
+      p2.fields.get("require") == "Text Review", p2.fields)
+
+# A task that resolves to a SEARCH link must still keep its layout — these
+# forwarded messages carry a seller and a price, and answering with a bare
+# search link would throw away everything the sender wrote.
+task_search = message.format_task_reply(
+    p2, "https://www.amazon.com/s?k=fitness+tracker&tag=t", "US", note="Disclaimer here",
+)
+check("a task answered by a search link keeps the full layout",
+      all(x in task_search for x in ("Sold By: Smart Gathering", "Price: 39.99",
+                                     "Require: Text Review", "/s?k=")), task_search)
+check("the search disclaimer sits above the branding",
+      task_search.index("Disclaimer here") < task_search.index(message.BRANDING),
+      task_search)
+
+out3 = message.format_task_reply(p1, "https://www.amazon.com/s?k=x&tag=y", "US")
+check("country is named properly when the sender never labelled it",
+      "Country: USA" in out3, out3)
+check("no Require line when there is no requirement", "Require" not in out3, out3)
+
+# the dotted separator must not swallow ordinary writing
+check("ordinary sentence with dots is not read as a field",
+      not message.parse("ok...thanks for that").is_task)
+check("a country word inside a sentence is still ignored",
+      country_of("is it in stock right now") is None)
+check("a seller name ending in -US does not decide the country",
+      message.parse("Sold by...Viconor-US\nKeyword...lamp").country is None,
+      "only 'Usa review' should set the country in message 1")
+
 print(f"\n{passed} passed, {failed} failed")
 raise SystemExit(1 if failed else 0)

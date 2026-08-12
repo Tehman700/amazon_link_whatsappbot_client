@@ -198,9 +198,20 @@ async def process_message(payload: schemas.ProcessRequest, db: Session = Depends
         elif tag and parsed.keyword:
             # No product, but enough to search for one. A search link has no
             # ASIN, so it never becomes an article — it is returned as-is.
+            # A task message still gets the client's layout: the forwarded ones
+            # carry a seller and a price, and dropping to a bare search link
+            # would throw away everything the sender wrote.
+            if STRUCTURED_REPLY and parsed.is_task:
+                text = message.format_task_reply(
+                    parsed,
+                    message.search_url(marketplace.domain, parsed.keyword, tag),
+                    marketplace.code,
+                    note=message.KEYWORD_DISCLAIMER,
+                )
+            else:
+                text = _keyword_reply(parsed, marketplace, tag)
             return schemas.ProcessResponse(
-                text=_keyword_reply(parsed, marketplace, tag),
-                links_replaced=1, replacements=[], skipped=[],
+                text=text, links_replaced=1, replacements=[], skipped=[],
             )
 
     # Always publish an article for every rewritten link so it appears in the
