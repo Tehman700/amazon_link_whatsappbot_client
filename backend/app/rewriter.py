@@ -13,8 +13,17 @@ from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 URL_RE = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
 
 # Characters that are commonly sentence punctuation rather than part of a URL
-# when they appear at the very end of a match.
-_TRAILING_PUNCT = ".,;:!?)]}>'\""
+# when they appear at the very end of a match. `*`, `_` and `~` are WhatsApp's
+# own formatting marks: a link someone sent in bold arrives as *https://...*
+# and the trailing star was being kept as part of the URL, which broke it.
+_TRAILING_PUNCT = ".,;:!?)]}>'\"*_~"
+
+# Zero-width and direction marks survive copy-paste between apps and are
+# invisible on screen, so a link that looks perfect fails for no visible reason.
+_INVISIBLE = dict.fromkeys(
+    map(ord, "​‌‍‎‏⁦⁧⁨⁩﻿ "),
+    None,
+)
 
 
 @dataclass
@@ -31,7 +40,15 @@ class SkippedLink:
 
 
 def _clean_url_match(raw: str) -> str:
+    """Trailing junk removed. Deliberately prefix-preserving — process_text
+    works out where the URL ended from len(), so this must never remove a
+    character from the middle."""
     return raw.rstrip(_TRAILING_PUNCT)
+
+
+def _strip_invisible(url: str) -> str:
+    """For matching and rewriting only, never for measuring the original."""
+    return url.translate(_INVISIBLE)
 
 
 def match_marketplace(host: str | None, domain_map: dict[str, object]):
@@ -52,7 +69,10 @@ def match_marketplace(host: str | None, domain_map: dict[str, object]):
 
 def find_urls(text: str) -> list[str]:
     """All URLs present in the text, trailing punctuation stripped."""
-    return [_clean_url_match(m.group(0)) for m in URL_RE.finditer(text)]
+    return [
+        _strip_invisible(_clean_url_match(m.group(0)))
+        for m in URL_RE.finditer(text)
+    ]
 
 
 # Amazon product id (ASIN) in a URL path: /dp/<ASIN>, /gp/product/<ASIN>, ...
@@ -152,6 +172,14 @@ def _resolve_market(text: str, market_index: dict[str, object]):
     return None
 
 
+def tagged_product_link(marketplace, asin: str, tag: str) -> str:
+    """The canonical short product link for an ASIN, already tagged."""
+    return urlunsplit(
+        ("https", f"www.{marketplace.domain}", f"/dp/{asin}",
+         urlencode([("tag", tag)], quote_via=quote), "")
+    )
+
+
 def build_from_asin(
     text: str,
     domain_map: dict[str, object],
@@ -176,10 +204,7 @@ def build_from_asin(
     if tag is None:
         return "", []
 
-    link = urlunsplit(
-        ("https", f"www.{marketplace.domain}", f"/dp/{asin}",
-         urlencode([("tag", tag)], quote_via=quote), "")
-    )
+    link = tagged_product_link(marketplace, asin, tag)
     new_text = f"{link}\n{text}"
     replacement = Replacement(
         original=f"ASIN:{asin}", rewritten=link, marketplace_code=marketplace.code
@@ -214,8 +239,12 @@ def process_text(
     last_end = 0
 
     for match in URL_RE.finditer(text):
-        url = _clean_url_match(match.group(0))
-        end = match.start() + len(url)
+        raw = _clean_url_match(match.group(0))
+        # Where the URL ends in the ORIGINAL text, before invisible characters
+        # are dropped — otherwise the tail of the link is left behind in the
+        # reply as stray characters.
+        end = match.start() + len(raw)
+        url = _strip_invisible(raw)
 
         target = url
         marketplace = match_marketplace(urlsplit(url).hostname, domain_map)

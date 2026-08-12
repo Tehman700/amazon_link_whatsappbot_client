@@ -2,8 +2,13 @@
 
 import json
 import os
+import sys
 import urllib.error
 import urllib.request
+
+# Replies can now contain Urdu; without this a FAIL line crashes the harness
+# on a cp1252 console and hides which case actually failed.
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 BASE = os.getenv("API_BASE", "http://127.0.0.1:8000")
 SENDER = "+923460976174"  # Beast Affiliate (updated via dashboard)
@@ -82,10 +87,15 @@ check("two links both replaced",
       r["links_replaced"] == 2
       and r["text"] == "a https://amazon.com/dp/B01?tag=beastaffiliate-20 b https://amazon.ca/dp/B02?tag=beastaffiliate0a-20 c", r)
 
-# 7. Non-Amazon URL with no Amazon link on the page -> untouched
+# 7. Non-Amazon URL with no Amazon link on the page.
+# Changed 2026-08-07 (issue #5): this used to be answered with silence. A link
+# the bot could not turn into a product is the single thing users complained
+# about most, and those arrive as a bare URL with no other text, so silence
+# here meant silence in the case that mattered. Now it says why. The message
+# itself is still never altered. ALWAYS_REPLY=false restores the old silence.
 status, r = post("/process-message", {"sender": SENDER, "text": "see https://example.com/ ok"})
-check("non-amazon URL (no amazon on page) untouched",
-      r["text"] == "see https://example.com/ ok" and r["links_replaced"] == 0, r)
+check("non-amazon URL is explained, and the original text is not altered",
+      "could not be opened" in r["text"] and "https://example.com/" not in r["text"], r)
 
 # 8. No link at all -> text unchanged
 status, r = post("/process-message", {"sender": SENDER, "text": "hello, no links here"})
