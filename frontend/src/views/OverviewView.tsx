@@ -73,6 +73,10 @@ export default function OverviewView({ users, marketplaces, refresh, onError }: 
           email: user.email,
           link_preference: user.link_preference ?? "direct",
           store_name: user.store_name ?? "",
+          // Carried through explicitly: this endpoint replaces the whole user,
+          // so omitting it would quietly reset their publishing site to the
+          // default every time a name or number is edited from this grid.
+          us_site: user.us_site ?? "",
           [field]: field === "email" ? value || null : value,
         });
       }

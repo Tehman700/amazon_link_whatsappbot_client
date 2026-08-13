@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../api";
-import type { Marketplace, User } from "../types";
+import type { ArticleSite, Marketplace, User } from "../types";
 
 interface Props {
   users: User[];
@@ -9,10 +9,22 @@ interface Props {
   onError: (message: string) => void;
 }
 
-const emptyForm = { name: "", whatsapp_number: "", email: "" };
+const emptyForm = { name: "", whatsapp_number: "", email: "", us_site: "" };
+
+/* The sites a user's US articles can publish to, fetched from the backend so
+   this list and the one in Portal administration can never disagree with each
+   other or with what the API accepts. */
+function useArticleSites(): ArticleSite[] {
+  const [sites, setSites] = useState<ArticleSite[]>([]);
+  useEffect(() => {
+    api.articleSites().then((d) => setSites(d.sites)).catch(() => setSites([]));
+  }, []);
+  return sites;
+}
 
 export default function UsersView({ users, marketplaces, refresh, onError }: Props) {
   const [form, setForm] = useState(emptyForm);
+  const articleSites = useArticleSites();
   const [autoTags, setAutoTags] = useState(true);
   const withDefaults = marketplaces.filter((m) => (m.default_tag ?? "").trim());
   const [expanded, setExpanded] = useState<number | null>(null);
@@ -27,6 +39,7 @@ export default function UsersView({ users, marketplaces, refresh, onError }: Pro
         name: form.name.trim(),
         whatsapp_number: form.whatsapp_number.trim(),
         email: form.email.trim() || null,
+        us_site: form.us_site,
         apply_default_tags: autoTags,
       });
       setForm(emptyForm);
@@ -56,6 +69,15 @@ export default function UsersView({ users, marketplaces, refresh, onError }: Pro
             value={form.email}
             onChange={(e) => setForm({ ...form, email: e.target.value })}
           />
+          <select
+            value={form.us_site}
+            onChange={(e) => setForm({ ...form, us_site: e.target.value })}
+            title="Where this user's US articles are published"
+          >
+            {articleSites.map((s) => (
+              <option key={s.key} value={s.key}>{s.label}</option>
+            ))}
+          </select>
           <button className="primary" onClick={addUser}>Add</button>
         </div>
         <label
@@ -86,6 +108,7 @@ export default function UsersView({ users, marketplaces, refresh, onError }: Pro
           key={user.id}
           user={user}
           marketplaces={marketplaces}
+          articleSites={articleSites}
           expanded={expanded === user.id}
           toggle={() => setExpanded(expanded === user.id ? null : user.id)}
           refresh={refresh}
@@ -100,6 +123,7 @@ export default function UsersView({ users, marketplaces, refresh, onError }: Pro
 function UserCard({
   user,
   marketplaces,
+  articleSites,
   expanded,
   toggle,
   refresh,
@@ -107,6 +131,7 @@ function UserCard({
 }: {
   user: User;
   marketplaces: Marketplace[];
+  articleSites: ArticleSite[];
   expanded: boolean;
   toggle: () => void;
   refresh: () => Promise<void>;
@@ -118,6 +143,7 @@ function UserCard({
     email: user.email ?? "",
     link_preference: user.link_preference ?? "direct",
     store_name: user.store_name ?? "",
+    us_site: user.us_site ?? "",
   });
   const [tags, setTags] = useState<Record<number, string>>(() =>
     Object.fromEntries(user.tracking_ids.map((t) => [t.marketplace_id, t.tag])),
@@ -131,6 +157,7 @@ function UserCard({
         email: edit.email.trim() || null,
         link_preference: edit.link_preference,
         store_name: edit.store_name.trim(),
+        us_site: edit.us_site,
       });
       await refresh();
     } catch (e) {
@@ -221,6 +248,24 @@ function UserCard({
               value={edit.store_name}
               onChange={(e) => setEdit({ ...edit, store_name: e.target.value })}
             />
+            <button className="primary" onClick={saveUser}>Save</button>
+          </div>
+
+          <h3>Where to publish US articles</h3>
+          <p className="muted" style={{ marginTop: -6, marginBottom: 8, fontSize: 13 }}>
+            Applies to this user's next US article. Articles already published
+            keep their own address, so links already shared never move. Other
+            countries always publish to beastassociate.com.
+          </p>
+          <div className="form-row">
+            <select
+              value={edit.us_site}
+              onChange={(e) => setEdit({ ...edit, us_site: e.target.value })}
+            >
+              {articleSites.map((s) => (
+                <option key={s.key} value={s.key}>{s.label}</option>
+              ))}
+            </select>
             <button className="primary" onClick={saveUser}>Save</button>
           </div>
 

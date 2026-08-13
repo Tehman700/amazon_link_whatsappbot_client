@@ -54,6 +54,7 @@ from sqlalchemy import text as _text  # noqa: E402
 for _ddl in (
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS link_preference VARCHAR(8) DEFAULT 'direct'",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS store_name VARCHAR(120) DEFAULT ''",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS us_site VARCHAR(32) DEFAULT ''",
 ):
     try:
         with engine.begin() as _conn:

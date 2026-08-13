@@ -20,6 +20,11 @@ class User(Base):
         String(8), default="direct", server_default="direct"
     )
     store_name: Mapped[str] = mapped_column(String(120), default="", server_default="")
+    # Which site this user's US articles are published to. "" = the original
+    # destination, so every existing user keeps behaving exactly as before.
+    # Values must match US_SITES in the website's config.py — the admin picks
+    # one here, the website resolves it to a domain and stamps it on the link.
+    us_site: Mapped[str] = mapped_column(String(32), default="", server_default="")
 
     tracking_ids: Mapped[list["TrackingID"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"

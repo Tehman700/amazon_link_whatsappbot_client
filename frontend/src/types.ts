@@ -20,7 +20,14 @@ export interface User {
   email: string | null;
   link_preference: "direct" | "hub";
   store_name: string;
+  /* Which site this user's US articles publish to. "" = the original site. */
+  us_site: string;
   tracking_ids: TrackingID[];
+}
+
+export interface ArticleSite {
+  key: string;
+  label: string;
 }
 
 export interface Replacement {
@@ -61,6 +68,7 @@ export interface PortalAdminAccount {
   name: string;
   link_preference: string;
   store_name: string;
+  us_site: string;
   linked_numbers: string[];
   tracking_ids: { marketplace_code: string; marketplace_name: string; tag: string }[];
 }

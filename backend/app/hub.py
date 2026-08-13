@@ -77,6 +77,7 @@ async def publish_articles(
         return text
 
     store_name = (getattr(user, "store_name", "") or "").strip()
+    us_site = (getattr(user, "us_site", "") or "").strip()
     sender = getattr(user, "whatsapp_number", "") or ""
     deadline = time.monotonic() + HUB_BUDGET_SECONDS
 
@@ -95,6 +96,9 @@ async def publish_articles(
                         "store_name": store_name,
                         "sender": sender,
                         "source_link_id": source.group(1) if source else "",
+                        # Which site this user's US articles go to. Ignored by
+                        # the website for every other marketplace.
+                        "us_site": us_site,
                     },
                     headers={"X-Service-Key": HUB_SERVICE_KEY},
                     timeout=remaining,

@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from .. import models
 from ..database import get_db
+from ..sites import SITE_KEYS
 from ..hub import HUB_API_URL, HUB_SERVICE_KEY
 
 router = APIRouter(prefix="/portal-admin", tags=["portal-admin"])
@@ -82,6 +83,7 @@ def list_accounts(db: Session = Depends(get_db)):
         a["name"] = user.name if user else "(not a bot user)"
         a["link_preference"] = user.link_preference if user else "-"
         a["store_name"] = user.store_name if user else ""
+        a["us_site"] = getattr(user, "us_site", "") if user else ""
         a["linked_numbers"] = linked_by_user_id.get(user.id, []) if user else []
         # The user's per-country tracking IDs — the same data as the Overview
         # grid (bot users table), shown read-only on the detail page.
@@ -141,7 +143,7 @@ def backup(db: Session = Depends(get_db)):
     users_rows = [
         {"id": u.id, "name": u.name, "whatsapp_number": u.whatsapp_number,
          "email": u.email or "", "link_preference": u.link_preference,
-         "store_name": u.store_name}
+         "store_name": u.store_name, "us_site": getattr(u, "us_site", "")}
         for u in users
     ]
     tracking_rows = []
@@ -162,7 +164,8 @@ def backup(db: Session = Depends(get_db)):
         users_json.append({
             "id": u.id, "name": u.name, "whatsapp_number": u.whatsapp_number,
             "email": u.email or "", "link_preference": u.link_preference,
-            "store_name": u.store_name, "tracking_ids": tids,
+            "store_name": u.store_name, "us_site": getattr(u, "us_site", ""),
+            "tracking_ids": tids,
         })
 
     generated = datetime.now(timezone.utc).isoformat()
@@ -202,7 +205,8 @@ def backup(db: Session = Depends(get_db)):
         z.writestr("README.txt", readme)
         z.writestr("users.csv", _csv(
             users_rows,
-            ["id", "name", "whatsapp_number", "email", "link_preference", "store_name"]))
+            ["id", "name", "whatsapp_number", "email", "link_preference",
+             "store_name", "us_site"]))
         z.writestr("tracking_ids.csv", _csv(
             tracking_rows,
             ["user_id", "user_name", "whatsapp_number", "marketplace_code",
@@ -261,6 +265,37 @@ def logins(db: Session = Depends(get_db)):
         user = users_by_number.get(row["whatsapp_number"])
         row["name"] = user.name if user else ""
     return data
+
+
+@router.post("/accounts/{account_id}/us-site")
+async def set_us_site(account_id: int, request: Request, db: Session = Depends(get_db)):
+    """Change where a user's US articles are published, from the account page.
+
+    The setting belongs to the BOT user, not the portal account, because
+    articles are created for every bot user whether or not they ever log in.
+    Existing articles are untouched: each one keeps the domain it was published
+    under, so links already shared on WhatsApp never move."""
+    body = await request.json()
+    site = str(body.get("us_site", "")).strip()
+    if site not in SITE_KEYS:
+        raise HTTPException(422, f"Unknown site {site!r}")
+
+    account = next(
+        (a for a in _website("GET", "/api/admin/accounts").get("accounts", [])
+         if a["id"] == account_id), None,
+    )
+    if account is None:
+        raise HTTPException(404, "Account not found")
+    user = (
+        db.query(models.User)
+        .filter(models.User.whatsapp_number == account["whatsapp_number"])
+        .first()
+    )
+    if user is None:
+        raise HTTPException(404, "That account is not a registered bot user")
+    user.us_site = site
+    db.commit()
+    return {"us_site": user.us_site}
 
 
 @router.post("/accounts/{account_id}/reset-password")

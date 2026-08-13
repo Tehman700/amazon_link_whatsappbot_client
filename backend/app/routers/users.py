@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..database import get_db
+from ..sites import ARTICLE_SITES
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -18,6 +19,15 @@ def _get_user_or_404(user_id: int, db: Session) -> models.User:
 @router.get("", response_model=list[schemas.UserOut])
 def list_users(db: Session = Depends(get_db)):
     return db.query(models.User).order_by(models.User.id).all()
+
+
+# Declared before /{user_id} so the path is never read as a user id.
+@router.get("/article-sites")
+def article_sites():
+    """The sites US articles can be published to, for the admin dropdown.
+    Served from the backend so the two places that offer the choice cannot
+    drift apart from each other or from what the API will accept."""
+    return {"sites": [{"key": k, "label": label} for k, label in ARTICLE_SITES]}
 
 
 @router.post("", response_model=schemas.UserOut, status_code=201)

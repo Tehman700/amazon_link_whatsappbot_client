@@ -1,4 +1,4 @@
-import type { Marketplace, ProcessResponse, User } from "./types";
+import type { ArticleSite, Marketplace, ProcessResponse, User } from "./types";
 
 // Dev: talk to the local FastAPI directly (VITE_API_URL can override).
 // Prod: always same-origin /api/*, rewritten to the API deployment by
@@ -87,6 +87,7 @@ export const api = {
     email: string | null;
     link_preference?: "direct" | "hub";
     store_name?: string;
+    us_site?: string;
     apply_default_tags?: boolean;
   }) => request<User>("/users", { method: "POST", body: JSON.stringify(data) }),
   updateUser: (
@@ -97,9 +98,13 @@ export const api = {
       email: string | null;
       link_preference: "direct" | "hub";
       store_name: string;
+      us_site: string;
     },
   ) => request<User>(`/users/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   deleteUser: (id: number) => request<void>(`/users/${id}`, { method: "DELETE" }),
+  // Served by the backend so both places that offer the choice show exactly
+  // the same options, and exactly what the API will accept.
+  articleSites: () => request<{ sites: ArticleSite[] }>("/users/article-sites"),
 
   setTrackingIds: (userId: number, items: { marketplace_id: number; tag: string }[]) =>
     request<User>(`/users/${userId}/tracking-ids`, { method: "PUT", body: JSON.stringify(items) }),
@@ -148,6 +153,10 @@ export const portalAdmin = {
   setShippedOrders: (id: number, shipped_orders: number) =>
     request<{ shipped_orders: number }>(`/portal-admin/accounts/${id}/shipped-orders`, {
       method: "POST", body: JSON.stringify({ shipped_orders }),
+    }),
+  setUsSite: (id: number, us_site: string) =>
+    request<{ us_site: string }>(`/portal-admin/accounts/${id}/us-site`, {
+      method: "POST", body: JSON.stringify({ us_site }),
     }),
   unlinkNumber: (number: string) =>
     request<void>(`/portal-admin/linked/${encodeURIComponent(number)}`, { method: "DELETE" }),

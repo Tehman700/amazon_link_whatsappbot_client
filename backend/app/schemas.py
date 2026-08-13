@@ -1,4 +1,6 @@
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from .sites import SITE_KEYS
 
 
 # ---- Marketplaces ----
@@ -42,6 +44,17 @@ class UserBase(BaseModel):
     email: str | None = None
     link_preference: str = Field(default="direct", pattern="^(direct|hub)$")
     store_name: str = Field(default="", max_length=120)
+    # Where this user's US articles are published. "" keeps the original site,
+    # which is what every existing user has. Validated against the known list
+    # rather than left free-text, so a typo cannot publish to a dead domain.
+    us_site: str = Field(default="", max_length=32)
+
+    @field_validator("us_site")
+    @classmethod
+    def _known_site(cls, v: str) -> str:
+        if v not in SITE_KEYS:
+            raise ValueError(f"Unknown site {v!r}")
+        return v
 
 
 class UserCreate(UserBase):

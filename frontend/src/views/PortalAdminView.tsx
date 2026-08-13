@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
-import { portalAdmin } from "../api";
+import { api, portalAdmin } from "../api";
 import type {
+  ArticleSite,
   EarningsDetailData,
   EarningsEntryOut,
   EarningsOverview,
@@ -131,6 +132,56 @@ export default function PortalAdminView() {
 /* Entry kinds the admin enters as a direct amount, i.e. everything except a
    commission 'earning', which is gross x rate. */
 type OtherKind = "bonus" | "adjustment" | "return";
+
+/* Where this user's US articles are published. The setting lives on the BOT
+   user, not the portal account, because articles are created for every bot
+   user whether or not they ever sign in — so the same choice appears on the
+   Users tab and both edit the one value. */
+function UsSitePicker({ account }: { account: PortalAdminAccount }) {
+  const [sites, setSites] = useState<ArticleSite[]>([]);
+  const [value, setValue] = useState(account.us_site ?? "");
+  const [state, setState] = useState<"" | "saving" | "saved" | string>("");
+
+  useEffect(() => {
+    api.articleSites().then((d) => setSites(d.sites)).catch(() => setSites([]));
+  }, []);
+
+  const save = async (next: string) => {
+    setValue(next);
+    setState("saving");
+    try {
+      await portalAdmin.setUsSite(account.id, next);
+      setState("saved");
+      window.setTimeout(() => setState(""), 1500);
+    } catch (e) {
+      setValue(account.us_site ?? "");
+      setState((e as Error).message);
+    }
+  };
+
+  return (
+    <div className="card">
+      <h2>Where to publish US articles</h2>
+      <p className="muted" style={{ marginTop: -6, marginBottom: 10, fontSize: 13 }}>
+        Applies to this user's next US article. Articles already published keep
+        their own address, so links already shared on WhatsApp never move.
+        Other countries always publish to beastassociate.com.
+      </p>
+      <div className="form-row">
+        <select value={value} onChange={(e) => save(e.target.value)}>
+          {sites.map((s) => (
+            <option key={s.key} value={s.key}>{s.label}</option>
+          ))}
+        </select>
+        {state === "saving" && <span className="muted">Saving…</span>}
+        {state === "saved" && <span className="muted">Saved ✓</span>}
+        {state && state !== "saving" && state !== "saved" && (
+          <span className="muted">{state}</span>
+        )}
+      </div>
+    </div>
+  );
+}
 
 /* ------------------------------------------------------------ logins tab */
 
@@ -916,6 +967,8 @@ function AccountDetail({
           ) : null}
         </p>
       </div>
+
+      <UsSitePicker account={account} />
 
       <div className="card">
         <h2>Tracking IDs</h2>
