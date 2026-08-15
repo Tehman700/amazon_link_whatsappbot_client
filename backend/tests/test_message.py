@@ -43,8 +43,13 @@ check("alternative label", country_of("Region: Canada") == "CA")
 check("a country word inside a sentence is ignored",
       country_of("is it available in stock right now") is None,
       "'it' must not mean amazon.it")
-check("bare two-letter code is ignored when unlabelled",
-      country_of("us\nsomething") is None)
+# A two-letter code alone on a line is unambiguous and IS accepted (senders
+# really do write just "US"). Inside a sentence it is still ignored — that is
+# what keeps "is it in stock" from meaning amazon.it.
+check("a two-letter code alone on a line is accepted",
+      country_of("us\nsomething") == "US")
+check("the same code inside a sentence is ignored",
+      country_of("can you check if it is available") is None)
 check("...but is accepted when labelled", country_of("Country: it") == "IT")
 check("no country at all", country_of("hello there") is None)
 
@@ -216,6 +221,66 @@ check("the last line survives", long_msg.extra[-1] == "line 39", long_msg.extra[
 wordy = "w" * 2000
 check("a very long line is carried whole",
       message.parse(f"Keyword: x\n{wordy}").extra == [wordy])
+
+# ------------------------------ more shapes from real traffic (2026-08-07)
+# Two messages that came back as errors. Between them they broke three
+# assumptions: the separator, the country, and where the label sits.
+
+# A fullwidth colon — visually almost identical to ":", common when forwarding
+# from Chinese-language suppliers — plus a bare "US".
+REAL_4 = ("US\n\nkeywords：gold necklace for women（Color: 7-Gold）\n"
+          "price：12.99\nsold by：Fwlisesa\nasin：B0BW91BKR4\n\n1 order  rating")
+p4 = message.parse(REAL_4)
+check("bare 'US' on its own line is a country", p4.country == "US", p4)
+check("fullwidth colon reads as a separator",
+      p4.fields.get("price") == "12.99", p4.fields)
+check("...for every field on the line", p4.fields.get("sold_by") == "Fwlisesa", p4.fields)
+check("keyword keeps its fullwidth brackets",
+      p4.fields.get("keyword", "").startswith("gold necklace"), p4.fields)
+check("recognised as a task", p4.is_task, p4)
+check("the country line is not echoed back as well",
+      not any(x.strip() == "US" for x in p4.extra), p4.extra)
+check("the ASIN line is not echoed back either",
+      not any("B0BW91BKR4" in x for x in p4.extra), p4.extra)
+check("but text we did not understand still is",
+      any("order" in x for x in p4.extra), p4.extra)
+
+# Label on one line, value on the next; price and refund with no separator.
+REAL_5 = ("Keywords \nKryvoth Föhn 1800W Ionen-Haartrockner\n\n"
+          "Sold by \ndongwenYueWenDong\n\n"
+          "Germany \U0001F1E9\U0001F1EA review \nPrice 99.99€\n\n90% refund")
+p5 = message.parse(REAL_5)
+check("a label alone takes the line below as its value",
+      p5.fields.get("keyword") == "Kryvoth Föhn 1800W Ionen-Haartrockner", p5.fields)
+check("...for the seller too", p5.fields.get("sold_by") == "dongwenYueWenDong", p5.fields)
+check("a label with only a space reads as a field",
+      p5.fields.get("price") == "99.99€", p5.fields)
+check("value written before the label is still read",
+      p5.fields.get("refund") == "90%", p5.fields)
+check("country from the flag", p5.country == "DE", p5)
+
+# ---------------------------------------- the guards these fixes must not break
+check("'is it in stock' still does not mean amazon.it",
+      country_of("is it in stock right now") is None)
+check("lowercase 'us' in a sentence is still ignored",
+      country_of("please send us the link when you can") is None)
+check("'US' among a couple of words IS accepted", country_of("US review") == "US")
+check("a capitalised code in a long sentence is not",
+      country_of("the US customer said they would order it later today") is None)
+check("a generic word starting a sentence is not a field",
+      message.parse("Item arrived broken yesterday").fields.get("keyword") is None,
+      message.parse("Item arrived broken yesterday").fields)
+check("'no refund' is not read as a refund amount",
+      message.parse("Keyword: x\nno refund").fields.get("refund") is None)
+check("two labels in a row do not consume each other",
+      message.parse("Keywords\nSold by\nAcme Ltd").fields.get("sold_by") == "Acme Ltd",
+      message.parse("Keywords\nSold by\nAcme Ltd").fields)
+check("a label followed by a link does not swallow the link",
+      message.parse("Keyword\nhttps://www.amazon.com/dp/B0GS64BBG2").fields.get("keyword")
+      is None)
+check("ordinary chatter parses to nothing at all",
+      message.parse("ok thanks brother, will do").fields == {}
+      and message.parse("ok thanks brother, will do").country is None)
 
 print(f"\n{passed} passed, {failed} failed")
 raise SystemExit(1 if failed else 0)

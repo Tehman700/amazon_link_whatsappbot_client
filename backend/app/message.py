@@ -121,13 +121,38 @@ FIELDS: list[tuple[str, str, str, tuple[str, ...]]] = [
 _LABEL_TO_KEY = {syn: key for key, _, _, syns in FIELDS for syn in syns}
 _ALL_LABELS = list(_LABEL_TO_KEY)
 
-# A line like "Sold By: Smart Gathering", "Keyword - Fitness Tracker", or
-# "Price...67.99". The run of dots is not a stylistic detail: it is what the
-# client's own forwarded messages actually use, and only accepting colons meant
-# every one of those fields was invisible to us.
-_LINE_RE = re.compile(
-    r"^\s*([A-Za-z][A-Za-z .%_]{1,24}?)\s*(?::|[-–—]|\.{2,}|…)\s*(.*)$"
+# Every separator seen in real traffic. The fullwidth colon matters as much as
+# the ASCII one — senders forwarding from Chinese-language suppliers use it, and
+# it looks identical enough that nobody notices why the message stopped working.
+_SEP = r"(?::|：|﹕|[-–—=]|\.{2,}|…)"
+
+# "Sold By: Smart Gathering", "Keyword - Fitness Tracker", "Price...67.99".
+_LINE_RE = re.compile(rf"^\s*([A-Za-z][A-Za-z .%_]{{1,24}}?)\s*{_SEP}\s*(.*)$")
+
+# Labels distinctive enough to be read with no separator at all, as in
+# "Price 99.99€". Generic words that start ordinary sentences — item, product,
+# need, type, cost, brand — are deliberately left out: "Item arrived broken"
+# must not be read as a keyword.
+_BARE_LABELS = (
+    "sold by", "soldby", "keywords", "keyword", "key word",
+    "price", "refund", "country", "marketplace", "market", "region",
 )
+_BARE_LABEL_RE = re.compile(
+    rf"^\s*({'|'.join(sorted(_BARE_LABELS, key=len, reverse=True))})\s+(\S.*)$",
+    re.IGNORECASE,
+)
+
+# The reverse order, as in "90% refund". Restricted to the two numeric fields
+# and to values containing a digit, so "no refund" or "full refund" are left as
+# ordinary text rather than becoming a refund amount.
+_REVERSE_LABEL_RE = re.compile(
+    r"^\s*(\S.*?\d\S*)\s+(refund|price)\s*$", re.IGNORECASE
+)
+
+# A line holding nothing but a label, with the value on the line below:
+#     Keywords
+#     Kryvoth Föhn 1800W
+_LABEL_ONLY_RE = re.compile(rf"^\s*([A-Za-z][A-Za-z .%_]{{1,24}}?)\s*{_SEP}?\s*$")
 
 
 def _label_key(raw: str) -> str | None:
@@ -138,6 +163,28 @@ def _label_key(raw: str) -> str | None:
         return _LABEL_TO_KEY[key]
     near = difflib.get_close_matches(key, _ALL_LABELS, n=1, cutoff=0.82)
     return _LABEL_TO_KEY[near[0]] if near else None
+
+
+def _field_on_line(line: str) -> tuple[str, str] | None:
+    """(field, value) when one line carries both, whatever separates them."""
+    for pattern in (_LINE_RE, _BARE_LABEL_RE):
+        m = pattern.match(line)
+        if m:
+            key = _label_key(m.group(1))
+            if key:
+                return key, m.group(2).strip()
+    m = _REVERSE_LABEL_RE.match(line)
+    if m:
+        key = _label_key(m.group(2))
+        if key:
+            return key, m.group(1).strip()
+    return None
+
+
+def _label_only(line: str) -> str | None:
+    """The field a line names, when the line is nothing but that label."""
+    m = _LABEL_ONLY_RE.match(line)
+    return _label_key(m.group(1)) if m else None
 
 
 class Parsed:
@@ -181,15 +228,8 @@ def parse(text: str) -> Parsed:
     # thrown away just because it was not recognised.
     consumed: set[int] = set()
 
-    for i, line in enumerate(lines):
-        m = _LINE_RE.match(line)
-        if not m:
-            continue
-        key = _label_key(m.group(1))
-        if key is None:
-            continue  # unknown label — carried over verbatim, not dropped
-        consumed.add(i)
-        value = m.group(2).strip()
+    def record(key: str, value: str) -> None:
+        nonlocal country
         labelled.add(key)
         if key == "country":
             country = country or _match_country(value, labelled=True)
@@ -197,6 +237,43 @@ def parse(text: str) -> Parsed:
                 fields["country"] = value
         elif value:
             fields.setdefault(key, value)
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+
+        got = _field_on_line(line)
+        if got:
+            consumed.add(i)
+            record(*got)
+            i += 1
+            continue
+
+        # A label alone, with its value on the line below. Common in forwarded
+        # supplier messages, where the label sits on its own line.
+        key = _label_only(line)
+        if key is not None:
+            j = i + 1
+            while j < len(lines) and not lines[j].strip():
+                j += 1
+            value = lines[j].strip() if j < len(lines) else ""
+            # Only take the next line when it is plainly a value: not another
+            # label, not a link, not an ASIN. Otherwise two labels in a row
+            # would eat each other.
+            if (
+                value
+                and _field_on_line(value) is None
+                and _label_only(value) is None
+                and "http" not in value.lower()
+                and not re.fullmatch(r"[A-Z0-9]{10}", value)
+            ):
+                consumed.add(i)
+                consumed.add(j)
+                record(key, value)
+                i = j + 1
+                continue
+
+        i += 1  # unknown line — carried over verbatim, not dropped
 
     # A flag anywhere is as good as writing the country's name.
     if country is None:
@@ -214,7 +291,7 @@ def parse(text: str) -> Parsed:
                 country = hit
                 # Only swallow the line when it is nothing BUT the country;
                 # "Usa review" keeps its other word rather than losing it.
-                if _match_country(line.strip(), labelled=False):
+                if _is_country_only(line):
                     consumed.add(i)
                 break
 
@@ -238,6 +315,10 @@ def parse(text: str) -> Parsed:
                 if _REQUIRE_RE.search(line):
                     consumed.add(i)
                     break
+
+    for i, line in enumerate(lines):
+        if _ASIN_LINE_RE.match(line):
+            consumed.add(i)
 
     return Parsed(country, keyword, fields, labelled,
                   extra=_carry_over(lines, consumed))
@@ -278,20 +359,50 @@ def _country_in_line(line: str) -> str | None:
     review" resolves, "is it in stock" does not.
     """
     stripped = line.strip()
+
+    # A line that is nothing but a two-letter code carries no ambiguity — "US"
+    # on its own line can only mean the country. This is the narrow exception
+    # to the rule below, which exists so "is it in stock" never means amazon.it.
+    bare = re.fullmatch(r"([A-Za-z]{2})[\s.!,]*", stripped)
+    if bare and _norm(bare.group(1)) in COUNTRY_WORDS:
+        return COUNTRY_WORDS[_norm(bare.group(1))]
+
     whole = _match_country(stripped, labelled=False)
     if whole:
         return whole
 
-    words = [w.lower() for w in re.findall(r"[A-Za-z]+", stripped)]
+    raw_words = re.findall(r"[A-Za-z]+", stripped)
+    words = [w.lower() for w in raw_words]
     for word in words:
         if word in _STRONG_COUNTRY_WORDS:
             return _STRONG_COUNTRY_WORDS[word]
+
+    # "US review", "UK 🇬🇧 review" — a two-letter code is trusted among other
+    # words only when it was written in capitals on a short line. That keeps
+    # the lowercase "us" of "please send us the link" out of it.
+    if len(raw_words) <= 3:
+        for word in raw_words:
+            if len(word) == 2 and word.isupper() and word.lower() in COUNTRY_WORDS:
+                return COUNTRY_WORDS[word.lower()]
     # "United States" / "Great Britain" arrive as two words.
     for a, b in zip(words, words[1:]):
         pair = a + b
         if pair in _STRONG_COUNTRY_WORDS:
             return _STRONG_COUNTRY_WORDS[pair]
     return None
+
+
+# A line that is only a country, so the reply's Country line already carries it.
+def _is_country_only(line: str) -> bool:
+    token = re.sub(r"[^A-Za-z ]", " ", line).strip()
+    return bool(token) and _match_country(token, labelled=True) is not None
+
+
+# "asin: B0XXXXXXXX" on its own line — the link is built from it, so repeating
+# the raw line underneath adds nothing.
+_ASIN_LINE_RE = re.compile(
+    rf"^\s*asins?\s*{_SEP}?\s*[A-Za-z0-9]{{10}}\s*$", re.IGNORECASE
+)
 
 
 # "need text review", "video review" — the requirement written without a label.
