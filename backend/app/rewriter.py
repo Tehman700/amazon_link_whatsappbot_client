@@ -10,6 +10,8 @@ import re
 from dataclasses import dataclass
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
+from . import walmart
+
 URL_RE = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
 
 # Characters that are commonly sentence punctuation rather than part of a URL
@@ -81,6 +83,26 @@ ASIN_PATH_RE = re.compile(r"/(?:dp|gp/product|gp/aw/d|product)/([A-Z0-9]{10})(?=
 # Query params that change what the customer sees/buys — everything else
 # (ref, social_share, rsd, edk, linkCode, ...) is share-tracking residue.
 KEEP_PARAMS = {"th", "psc", "smid", "m"}
+
+
+def is_walmart(marketplace) -> bool:
+    """Decided by the marketplace's DOMAIN rather than its code, so it follows
+    whatever the admin typed in the marketplaces table instead of depending on
+    a particular code being chosen."""
+    return "walmart." in (getattr(marketplace, "domain", "") or "").lower()
+
+
+def affiliate_link(url: str, tag: str, marketplace=None) -> str:
+    """This sender's affiliate link for a product URL.
+
+    Amazon appends a tag; Walmart wraps the URL in an Impact link carrying the
+    sender's subId. The two are different enough that they cannot share one
+    code path — appending `?tag=` to a Walmart URL produces a link that looks
+    fine and earns nothing.
+    """
+    if marketplace is not None and is_walmart(marketplace):
+        return walmart.affiliate_url(url, tag)
+    return rewrite_url(url, tag)
 
 
 def rewrite_url(url: str, tag: str) -> str:
@@ -264,7 +286,7 @@ def process_text(
             )
             continue
 
-        new_url = rewrite_url(target, tag)
+        new_url = affiliate_link(target, tag, marketplace)
         out.append(text[last_end : match.start()])
         out.append(new_url)
         last_end = end
