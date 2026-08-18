@@ -28,6 +28,9 @@ AD_ID = os.getenv("WALMART_AD_ID", "16662").strip()
 # the product page, so a link built with them tracks the client but cannot tell
 # their users apart. sharedid is the one that arrives intact.
 SUB_ID_PARAM = os.getenv("WALMART_SUBID_PARAM", "sharedid").strip() or "sharedid"
+# Present on every link the client's own Impact panel generates. Walmart adds it
+# on the redirect anyway, but including it keeps our links identical to theirs.
+SOURCE_ID = os.getenv("WALMART_SOURCE_ID", "imp_000011112222333344").strip()
 
 IMPACT_HOST = "goto.walmart.com"
 
@@ -75,18 +78,23 @@ def product_url(url: str) -> str:
     campaign junk the sender's copy carried.
     """
     inner = unwrap(url)
-    parts = urlsplit(inner)
     item = item_id(inner)
     if item:
         return f"https://www.walmart.com/ip/{item}"
-    kept = [
-        (k, v)
-        for k, v in parse_qs(parts.query).items()
-        if k.lower() in KEEP_PARAMS
-    ]
-    query = urlencode({k: v[0] for k, v in kept}, quote_via=quote)
-    host = parts.netloc or "www.walmart.com"
-    return urlunsplit((parts.scheme or "https", host, parts.path, query, ""))
+    # Not a product page — a search, a category, something we do not model.
+    # Returned untouched: stripping "unknown" params here once emptied a search
+    # link's own ?q= and sent people to a blank results page.
+    return inner
+
+
+def product_url_for_item(item: str) -> str:
+    """The product page for a Walmart item id."""
+    return f"https://www.walmart.com/ip/{item}"
+
+
+def search_url(keyword: str) -> str:
+    """Walmart's own search, for a message that names a product but no item."""
+    return f"https://www.walmart.com/search?q={quote(keyword)}"
 
 
 def affiliate_url(url: str, sub_id: str) -> str:
@@ -99,7 +107,8 @@ def affiliate_url(url: str, sub_id: str) -> str:
     if not enabled():
         return url
     target = product_url(url)
-    query = urlencode(
-        {"veh": "aff", "u": target, SUB_ID_PARAM: sub_id}, quote_via=quote
-    )
+    params = {"sourceid": SOURCE_ID, "veh": "aff", "u": target}
+    if sub_id:
+        params[SUB_ID_PARAM] = sub_id
+    query = urlencode(params, quote_via=quote)
     return f"https://{IMPACT_HOST}/c/{PUBLISHER_ID}/{CAMPAIGN_ID}/{AD_ID}?{query}"

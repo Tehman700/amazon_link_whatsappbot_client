@@ -71,7 +71,11 @@ check("token expiry ~12h", abs(r.get("expires_at", 0) - time.time() - 12 * 3600)
 s, r = call("/users", token=token)
 check("GET /users with token -> 200", s == 200 and isinstance(r, list), (s, r))
 s, r = call("/marketplaces", token=token)
-check("GET /marketplaces with token -> 200", s == 200 and len(r) == 9, (s, r))
+# Count deliberately not pinned: marketplaces are admin-managed, and
+# Walmart joined the nine Amazon countries. This checks access, not
+# how many rows happen to exist today.
+check("GET /marketplaces with token -> 200",
+      s == 200 and isinstance(r, list) and len(r) >= 9, (s, r))
 
 # 5. Tampered / expired tokens rejected
 s, r = call("/users", token=token[:-4] + "0000")

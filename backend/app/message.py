@@ -405,6 +405,38 @@ _ASIN_LINE_RE = re.compile(
 )
 
 
+# The retailer named anywhere in the message. These senders write "Walmart
+# computers." at the top and then label the item id as "ASIN", so the word is
+# the only reliable signal that this is not an Amazon task.
+WALMART_RE = re.compile(r"\bwal[\s\-]?mart\b", re.IGNORECASE)
+
+# Walmart item ids are numeric and longer than an Amazon ASIN (which is ten
+# characters and usually starts B0). Eight digits minimum keeps prices, dates
+# and quantities out of it.
+_ITEM_LABELLED_RE = re.compile(
+    r"\b(?:asin|item|item\s*id|product\s*id|id)\b"
+    r"\s*[:：#\-]?\s*(\d{8,15})\b",
+    re.IGNORECASE,
+)
+_ITEM_BARE_RE = re.compile(r"\b(\d{8,15})\b")
+
+
+def mentions_walmart(text: str) -> bool:
+    return bool(WALMART_RE.search(text))
+
+
+def walmart_item_id(text: str) -> str:
+    """The Walmart item id in a message, labelled or bare.
+
+    These messages label it "ASIN" even though it is nothing of the sort, so
+    the label is not trusted — the shape of the number is."""
+    m = _ITEM_LABELLED_RE.search(text)
+    if m:
+        return m.group(1)
+    m = _ITEM_BARE_RE.search(text)
+    return m.group(1) if m else ""
+
+
 # "need text review", "video review" — the requirement written without a label.
 # Anchored on the kind of review so an unrelated line saying "review" is not
 # mistaken for one.
@@ -493,6 +525,10 @@ REPLIES: dict[str, tuple[str, str]] = {
     "no_country": (
         "Country missing. Add the country — for example USA, UK or Germany — and send it again.",
         "ملک درج نہیں ہے۔ براہِ کرم ملک لکھیں — مثلاً USA، UK یا Germany — اور دوبارہ بھیجیں۔",
+    ),
+    "walmart_country": (
+        "Walmart only has a US store. Remove the country, or set it to USA, and send it again.",
+        "والمارٹ کا صرف امریکہ میں اسٹور ہے۔ براہِ کرم ملک ہٹا دیں یا USA لکھیں اور دوبارہ بھیجیں۔",
     ),
     "no_product": (
         "No Amazon link, ASIN or keyword found here. Send the product link, or the country along with a keyword.",

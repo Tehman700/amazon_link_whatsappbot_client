@@ -4,7 +4,7 @@ import re
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from .. import hub, message, models, schemas
+from .. import hub, message, models, schemas, walmart
 from ..database import get_db
 from ..resolver import resolve_all
 from ..rewriter import (
@@ -46,6 +46,32 @@ def _keyword_reply(parsed, marketplace, tag: str) -> str:
         parts.append(message.KEYWORD_DISCLAIMER)
     parts.append(message.BRANDING)
     return "\n\n".join(parts)
+
+
+def _walmart_reply(text: str, parsed, wm, tag: str | None) -> str | None:
+    """The reply for a message that names Walmart, or None to fall through.
+
+    Walmart runs one store, walmart.com, so a message naming another country is
+    a template that was never updated rather than a real request — it is
+    refused instead of quietly sending a US link to someone expecting UK.
+    """
+    if parsed.country and parsed.country != "US":
+        return message.say("walmart_country")
+    if not tag:
+        return message.say("no_tag", country=wm.name)
+
+    item = message.walmart_item_id(text)
+    if item:
+        target = walmart.product_url_for_item(item)
+    elif parsed.keyword:
+        target = walmart.search_url(parsed.keyword)
+    else:
+        return message.say("no_product")
+
+    link = walmart.affiliate_url(target, tag)
+    if STRUCTURED_REPLY and parsed.is_task:
+        return message.format_task_reply(parsed, link, "US")
+    return "\n\n".join([link, message.BRANDING])
 
 
 def _explain(text: str, parsed, skipped, by_code: dict) -> str | None:
@@ -182,6 +208,20 @@ async def process_message(payload: schemas.ProcessRequest, db: Session = Depends
     parsed = message.parse(payload.text)
     by_code = {m.code: m for m in domain_map.values()}
     marketplace = by_code.get(parsed.country or "")
+
+    # A message naming Walmart is a Walmart task, whatever the sender labelled
+    # the item id as — theirs say "ASIN" and then give an eleven-digit Walmart
+    # item number. Runs before the Amazon fallbacks so "Walmart computers" can
+    # never come back as an Amazon search.
+    if not replacements and message.mentions_walmart(payload.text):
+        wm = next((m for m in domain_map.values()
+                   if "walmart." in (m.domain or "").lower()), None)
+        if wm is not None:
+            reply = _walmart_reply(payload.text, parsed, wm, tags.get(wm.id))
+            if reply is not None:
+                return schemas.ProcessResponse(
+                    text=reply, links_replaced=1, replacements=[], skipped=[],
+                )
 
     if not replacements and marketplace is not None:
         tag = tags.get(marketplace.id)
