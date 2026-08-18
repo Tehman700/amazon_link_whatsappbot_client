@@ -51,7 +51,7 @@ check("tracking junk is dropped", walmart.product_url(LONG) == SHORT, walmart.pr
 built = walmart.affiliate_url(LONG, "user42")
 check("built on the Impact host", built.startswith("https://goto.walmart.com/c/"), built)
 check("carries the publisher and campaign", "/c/1234567/891011/9383?" in built, built)
-check("carries the sender's subId", "subId1=user42" in built, built)
+check("carries the sender identifier", "sharedid=user42" in built, built)
 check("carries the product, encoded",
       "u=https%3A%2F%2Fwww.walmart.com%2Fip%2F19839769706" in built, built)
 
@@ -74,8 +74,14 @@ check("an existing affiliate link is unwrapped to its product",
       walmart.unwrap(someone_else))
 mine = walmart.affiliate_url(someone_else, "user42")
 check("...and rebuilt under our publisher", "/c/1234567/891011/" in mine, mine)
-check("...with our sender's subId, not theirs",
-      "subId1=user42" in mine and "otherguy" not in mine, mine)
+check("...carrying our sender's identifier, not theirs",
+      "sharedid=user42" in mine and "otherguy" not in mine, mine)
+
+# The parameter name is not a detail: goto.walmart.com silently drops subId1 on
+# the way to the product page, so a link built with it would track the client
+# but never tell their users apart. Verified against the live link 2026-08-18.
+check("the per-user parameter is sharedid, never subId1",
+      "sharedid=" in built and "subId1=" not in built, built)
 
 # ------------------------------------------------- off until it is configured
 walmart.PUBLISHER_ID = ""

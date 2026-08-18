@@ -20,9 +20,14 @@ from urllib.parse import parse_qs, quote, urlencode, urlsplit, urlunsplit
 #   https://goto.walmart.com/c/<publisher>/<campaign>/<ad>?...&u=<product url>
 PUBLISHER_ID = os.getenv("WALMART_PUBLISHER_ID", "").strip()
 CAMPAIGN_ID = os.getenv("WALMART_CAMPAIGN_ID", "").strip()
-AD_ID = os.getenv("WALMART_AD_ID", "9383").strip()
-# Which subId slot the client's Impact reporting is grouped by.
-SUB_ID_PARAM = os.getenv("WALMART_SUBID_PARAM", "subId1").strip() or "subId1"
+AD_ID = os.getenv("WALMART_AD_ID", "16662").strip()
+# Which parameter carries the per-user identifier.
+#
+# `sharedid`, NOT subId1 — verified against the client's own live link on
+# 2026-08-18. goto.walmart.com silently drops subId1/subid1/subId on the way to
+# the product page, so a link built with them tracks the client but cannot tell
+# their users apart. sharedid is the one that arrives intact.
+SUB_ID_PARAM = os.getenv("WALMART_SUBID_PARAM", "sharedid").strip() or "sharedid"
 
 IMPACT_HOST = "goto.walmart.com"
 
