@@ -10,7 +10,6 @@ affiliate tracking tag for the detected marketplace. See
   `POST /process-message`, and admin CRUD for users / marketplaces / tracking IDs.
 - `frontend/` — React + TypeScript (Vite) admin dashboard: manage users,
   their per-marketplace tracking IDs, marketplaces, and a live test panel.
-  Styled per [design.md](design.md).
 
 ## Run locally
 
@@ -74,6 +73,20 @@ cd backend
 python tests/test_resolve_cache.py     # offline: resolver retry + cache
 python tests/test_api.py               # needs a local server + seeded DB
 ```
+
+## Beyond plain link rewriting
+
+- **Message understanding** (`app/message.py`) — works out the country, keyword
+  and task fields from however the sender wrote them: labels with a colon, a
+  fullwidth colon, dots, no separator at all, or a label alone with its value on
+  the next line. Replies in the client's layout, carries through anything it did
+  not recognise, and explains itself in English and Urdu when it cannot build a
+  link. 90 offline tests.
+- **Walmart** (`app/walmart.py`) — Walmart affiliate links through the client's
+  Impact account. Walmart has no tag to append: the link wraps the product URL,
+  and the per-user identifier rides in `sharedid` (NOT `subId1`, which
+  goto.walmart.com silently drops). Off unless `WALMART_PUBLISHER_ID` and
+  `WALMART_CAMPAIGN_ID` are set.
 
 ## The rest of the system
 

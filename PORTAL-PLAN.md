@@ -1,6 +1,6 @@
 # Portal + Hub Pages Plan — "Beast Affiliate" user website
 
-Last updated: 2026-08-02. Companion to [PROJECT-STATUS.md](PROJECT-STATUS.md)
+Last updated: 2026-08-19. Companion to [PROJECT-STATUS.md](PROJECT-STATUS.md)
 (the live bot). This file records the **agreed design for the user-facing
 website module** — decided over 2026-07-15/16 with the owner — plus the full
 build log so any session can resume without re-deriving it.
@@ -62,7 +62,11 @@ users get a per-user percentage share.
 
 ## Decisions locked (owner confirmed each)
 
-1. **Amazon only.** No Walmart.
+1. ~~**Amazon only.** No Walmart.~~ **SUPERSEDED 2026-08-18** — the client
+   asked for Walmart, and it shipped. Their Impact account issues the links;
+   see the Walmart section of PROJECT-STATUS.md. Walmart articles are NOT
+   built (the article engine is ASIN-shaped) — Walmart replies are direct
+   affiliate links.
 2. **Link preference per user**: `direct` (default — pipeline byte-identical to
    today) vs `hub`. Stored on the user; the bot branch happens in
    `/process-message` at reply-format time only.
@@ -107,10 +111,22 @@ users get a per-user percentage share.
   client's current WordPress earnings admin on Hostinger); **no access, not
   ours, do not build on it**. Advised client to export their WordPress data
   (Reports → Export CSV) while they still have login access.
-- **Need to buy ONE more clean .com (~$10/yr)** for the US/non-US split
-  (decision #8). Avoid $0.98 promo TLDs (.shop/.online/.icu…): renewal traps +
-  spam-flagged on WhatsApp — domain reputation is core functionality here,
-  and article links are permanent once shared.
+- ~~Need to buy ONE more clean .com~~ — **done, and then some.** Five domains
+  now, all .com, all auto-renewing:
+  | Domain | Registrar | Renews |
+  |---|---|---|
+  | beastaffiliates.com | Namecheap | 2027-07-15 |
+  | beastassociate.com | Namecheap | 2027-07-16 |
+  | beastfinds.com | Cloudflare | 2027-08-06 |
+  | beastscart.com | Cloudflare | 2027-08-06 |
+  | beastsdeal.com | Cloudflare | 2027-08-06 |
+
+  Cheap promo TLDs were rejected on purpose (renewal traps, spam-flagged on
+  WhatsApp). **A lapsed domain kills every article link ever shared for that
+  site** — those links are permanent and sitting in people's chats, so the
+  renewal dates matter more than the ~$55/yr they cost. Note the first two are
+  registered at Namecheap even though Cloudflare serves their DNS, so renewal
+  reminders come from two different places.
 
 ## Hosting (ALL NEW ACCOUNTS — owner explicit: do not reuse the bot's
 Vercel/Neon/AWS; client creates accounts under their email and shares creds)
@@ -337,6 +353,82 @@ harness's file edits — restart the process after editing.
   accounts (password **hashes** only), earnings, entries, payouts, referrals and
   settings as JSON; the bot merges its own users + tracking IDs and streams the
   ZIP. See PROJECT-STATUS.md for the full contents.
+
+- **Sign-in only; self-signup closed (2026-08-04).** The login page asks for a
+  username and password and nothing else. The number step existed only to gate
+  signup (there is no OTP), and signup is now closed at the API too, behind
+  `ALLOW_SELF_SIGNUP` — hiding the screen alone would have left
+  `POST /portal/signup` open to anyone who knew the endpoint. Both `/check` and
+  `/signup` refuse **identically for registered and unregistered numbers**, so
+  the endpoint cannot be used to probe which numbers exist. Accounts are
+  admin-created only.
+
+- **Readable credentials for the admin (2026-08-04).** `portal_accounts.password_enc`
+  holds an encrypted copy of the password the ADMIN issued, so the Logins tab can
+  re-show it. `password_hash` is untouched and remains the only thing login
+  checks. The key lives in the environment (`CREDENTIAL_KEY`), not the database,
+  so a leaked dump alone reveals nothing; the column is deliberately EXCLUDED
+  from the backup export; and it is **cleared the moment a user sets their own
+  password**, so the admin is never shown one that will not work. Self-signup, if
+  ever reopened, stores nothing — a password the user chose is theirs.
+  ⚠️ **Losing `CREDENTIAL_KEY` makes every stored password unreadable.**
+
+- **Return orders + the payout rework (2026-08-05).** The user's Earnings page
+  now shows four CURRENT figures — Total orders, Shipped orders, Return orders,
+  Current total earnings — and nothing else; `earned` and `paid` are no longer
+  sent to the user at all. Payouts carry `orders_paid` and returns are an
+  `earnings_entries` kind with `orders_count`.
+  **Everything is derived, never stored.** `account.orders` stays exactly as the
+  admin typed it from Amazon's report and the dashboard subtracts what payouts
+  settled. Had a payout decremented the stored number, the next time the admin
+  entered the true Amazon total the deduction would vanish and the two records
+  would drift apart for good. It also means deleting a payout puts the orders and
+  the money straight back. Returns reduce earnings but deliberately NOT the order
+  counts — they are shown separately, so netting them out too would count the
+  same return twice on screen.
+  Also fixed here: **deleting a portal account used to orphan its earnings,
+  payouts and referrals.** They join by `account_id` with no foreign key, so an
+  orphan reattaches to whoever is issued that id next — which restoring from a
+  backup can cause, since that resets sequences. Deletion now takes them along,
+  keeping rewards other people earned for referring the departing user.
+
+- **Money totals (2026-08-05).** `to_be_paid` and `paid` across every user, shown
+  at the top of Overall performance. Overdrawn users count as **zero**, not as a
+  negative: one person's overpayment cannot fund another's, so the total is the
+  cash actually needed today. They are counted separately so the admin is told
+  they exist rather than having them silently vanish.
+
+- **Per-user US publishing sites (2026-08-07).** Three more US domains —
+  **beastfinds.com, beastscart.com, beastsdeal.com** (Cloudflare Registrar,
+  renew 2027-08-06) — alongside the original. The admin picks one per user in
+  the bot's Users tab and on the Portal administration account page; the choice
+  lives on the BOT user (`users.us_site`), because articles are created for every
+  registered user whether or not they ever sign in, and rides along in the mint
+  payload the way `store_name` does.
+  **`links.site` records the domain at creation.** That is the whole design: an
+  article link lives forever in somebody's WhatsApp history, so moving a user to
+  a different site must change only their NEXT article. Links made before this
+  carry no site and keep the original rule.
+  Two things that would have broken quietly and are now handled: the article
+  listing filters on the site an article was published to (filtering on
+  marketplace alone would show every US article on all four US sites), and the
+  canonical redirect knows all five domains and sends each article to its own.
+  Non-US always goes to beastassociate.com.
+
+- **Each site has its own face (2026-08-07/08).** The three new sites each get a
+  drawn SVG logo (a lens, a basket, a price tag), their own nav wording and
+  order, and their own landing-page composition — not the same template
+  recoloured. They advertise **no sign-in anywhere**: the dashboard lives on
+  beastaffiliates.com, so a login link would be a dead end for their visitors.
+  That meant removing the header button and three in-page partner sections.
+
+- **"For Premium Products" (2026-08-08).** A WhatsApp button on all five sites —
+  header, footer, and mid-page on the new layouts — plus a **support strip on
+  every published article**, whose greeting names the product so whoever answers
+  knows where the person came from. Kept WhatsApp green on every brand
+  deliberately: the colour is what tells someone what it opens before they read
+  it. It points at a **contact number that is NOT the bot** (`BOT_WA_NUMBER` was
+  repurposed for this); the bot's own number appears nowhere on the public sites.
 
 ## Open items
 

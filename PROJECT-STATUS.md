@@ -1,13 +1,41 @@
 # Project Status — WhatsApp Amazon Affiliate Link Bot
 
-Last updated: 2026-08-02. Read [project-handout.md](project-handout.md) first for the
+Last updated: 2026-08-19. Read [project-handout.md](project-handout.md) first for the
 original client spec; this file records everything built and deployed since.
 
-**System is LIVE with 60 real users (540 tracking IDs), ramping toward 150–200.**
-Latest deployed commit: `a1d545b` (resolver retry + cache). All three tiers
-auto-deploy on `git push`.
+**System is LIVE with ~75 real users, ramping toward 150–200.** Latest deployed
+commit: `b953f85` (Walmart message routing). All three tiers auto-deploy on
+`git push`.
+
+> **`design.md` was deleted by the owner on 2026-08-19**, along with
+> `Platform_Improvements_Feature_Requests.md` (the client's request list). The
+> dashboard still follows the design system that file described — ink/canvas/
+> soft-cloud neutrals, pill buttons, flat cards, hairline dividers — it is just
+> no longer written down. The client's list is finished, and its outcome is
+> recorded under "The client's improvement list" below.
+
+**The client's improvement list (#1–#9) is COMPLETE.** All nine shipped and were
+verified on production between 2026-08-05 and 2026-08-19. #9 was solved by the
+owner's own approach rather than the one their document described — do not
+reopen it.
 
 ### Quick history (newest first)
+- **Walmart, end to end** (`c1f4633`, `be87765`, `b953f85`, 2026-08-18/19) — a
+  message naming Walmart now returns a Walmart affiliate link. See Walmart below.
+- **Per-user publishing sites** (`2dd4783`, 2026-08-07) — the admin chooses which
+  of four domains a user's US articles are published to. See PORTAL-PLAN.md.
+- **Messier messages understood** (`d61cbba`, `1e7000f`, `415327f`, `2b3df02`,
+  2026-08-06/07) — fullwidth colons, labels on their own line, a bare "US", and
+  anything unrecognised carried through rather than dropped. See Message parsing.
+- **The reply layout, and always answering** (`e5891c1`, 2026-08-06) — the
+  client's template, plus bilingual English/Urdu explanations when a message
+  cannot be answered. Branding is `✨ Beast` (`1aa1067`, was a bear).
+- **Money totals for the admin** (`e6fb513`, 2026-08-05) — To be paid / Paid
+  across every user, at the top of Overall performance.
+- **Return orders + payout rework** (`d7957f5`, 2026-08-05) — payouts now draw
+  down order counts as well as money. See PORTAL-PLAN.md.
+- **Logins tab + copy-all credentials** (`f322b8b`, `fb97ea6`, 2026-08-04) —
+  every account's login, copyable any time, masked until asked for.
 - **Resolver retry + resolution cache** (`a1d545b`, 2026-08-02) — third-party
   pages refuse Vercel's datacenter IPs about half the time; links are now
   retried and every successful resolution is remembered. See Resolver below.
@@ -221,6 +249,58 @@ commit secrets).
   local n8n prototype worked and was retired. Chosen over the existing
   `/portal-admin/performance`, which only sees users WITH a portal account and
   was therefore blind to most activity.
+- `message.py` — **message understanding and the reply layout.** Pure: no
+  database, no network, no clock, so all 90 cases run offline.
+  - **Country** from `Country:`, `Market:`, a bare name, a flag emoji, or a
+    two-letter code. Misspellings tolerated (`Germny` → DE). Two-letter codes
+    are trusted only when the line is *just* the code, or when written in
+    capitals on a line of ≤3 words — so `US review` works while
+    "please send **us** the link" does not, and "is **it** in stock" never means
+    amazon.it. Getting this wrong sends someone to the wrong marketplace with
+    the wrong tag, which is why it is deliberately narrow.
+  - **Fields** (Require, Keyword, Sold By, Price, Refund) read from any of:
+    `label: value`, `label - value`, **`label：value`** (the fullwidth colon —
+    what Chinese-language supplier tooling emits, and visually near-identical to
+    `:`), `label...value`, `label value`, `value label` ("90% refund"), or a
+    label alone with its value on the **next line**.
+  - **Anything not recognised is carried through verbatim** after the link, so
+    a sender's own note ("Must order through link otherwise not accept cancel")
+    is never lost. URLs are stripped from that carried text — echoing the
+    sender's original link back would hand the buyer an untagged route to the
+    product. No length cap: truncating would mean choosing which of their words
+    to discard.
+  - **The layout** is the client's template; fields the sender did not provide
+    are dropped rather than printed empty. Branding is `✨ Beast`, defined once
+    in `BRANDING`.
+  - **What to say when nothing can be built** — bilingual English + Urdu, one
+    message, no "I", no error-dump tone. Silence is still the answer to "ok" or
+    a sticker: `_explain()` only speaks when the sender was actually trying to
+    get a link. Replying to everything would roughly double what this number
+    sends per day, which is exactly the signal WhatsApp bans for.
+  - Env flags `STRUCTURED_REPLY` and `ALWAYS_REPLY` switch the layout and the
+    explanations off independently, without a code change.
+- `walmart.py` — **Walmart affiliate links, via the client's Impact account.**
+  Walmart has no tag to append: a link *wraps* the product URL. Which builder
+  runs is decided by the marketplace's **domain**, not its code, so it follows
+  whatever the admin typed into the marketplaces table.
+  - Shape: `goto.walmart.com/c/<publisher>/<campaign>/<ad>?sourceid=&veh=aff&u=<product>&sharedid=<user>`
+  - **`sharedid`, NOT `subId1`.** Verified against the client's live link on
+    2026-08-18: goto.walmart.com silently DROPS subId1/subid1/subId on the way
+    to the product page. A link built with them still pays the client, so
+    nothing looks broken — but every sale is unattributable, which defeats the
+    whole reason for using Impact. `sharedid` arrives intact.
+  - The user's Walmart **tracking ID doubles as their sharedid**, so Walmart is
+    just another column in the Overview grid.
+  - A forwarded Walmart affiliate link is unwrapped to its product and rebuilt
+    under this sender — the same re-attribution replacing a foreign Amazon
+    `tag=` already does.
+  - Env: `WALMART_PUBLISHER_ID`, `WALMART_CAMPAIGN_ID` (client's Impact IDs).
+    Unset → `enabled()` is False and Walmart links pass through **untouched**,
+    so switching it on is an environment change rather than a deploy.
+  - A message *naming* Walmart routes there even with no link: their templates
+    label an 11-digit **Walmart item id** as "ASIN", so the shape of the number
+    is trusted rather than the label. No item id but a keyword → Walmart search.
+    A non-US country with Walmart is refused — Walmart runs one store.
 - `routers/auth.py` — `POST /auth/login` checks `ADMIN_USERNAME`/`ADMIN_PASSWORD`
   env vars (set in the Vercel API project; also in local `backend/.env`,
   gitignored). Returns HMAC-signed 12h token; signing key derived from the creds,
@@ -255,7 +335,8 @@ commit secrets).
   9-marketplace grid off at the FR column.
 - **Dark mode** — toggle in the navbar; `:root[data-theme="dark"]` in
   `index.css` overrides the neutral palette only, so the design system in
-  [design.md](design.md) still describes the light theme accurately.
+  the design system still describes the light theme accurately (design.md
+  itself was deleted 2026-08-19).
 - **Backup** button in the header — see the backup entry under Known constraints.
 - Login page; token in localStorage; auto-logout on 401.
 
@@ -296,9 +377,10 @@ tabs for one person.
   for whole-system activity use the reporting endpoints instead.
 - Prod builds ALWAYS call same-origin `/api/*` — `frontend/vercel.json` rewrites
   to the API project (no CORS, no env). `VITE_API_URL` is honored in dev only —
-  deliberate, because a stray Vercel env var once broke prod. Styling follows
-  [design.md](design.md) (Nike system: ink/canvas/soft-cloud, pill buttons, flat
-  cards, hairline dividers).
+  deliberate, because a stray Vercel env var once broke prod. Styling follows the
+  original design system (ink/canvas/soft-cloud neutrals, pill buttons, flat
+  cards, hairline dividers); design.md was deleted 2026-08-19, so this note is
+  now the only record of it.
 
 ### WhatsApp adapter (`whatsapp-adapter/src/index.js`)
 - **Baileys 7.0.0-rc13** (required — see LID incident above; 6.x cannot deliver
@@ -361,39 +443,37 @@ randomize typing vs "recording" presence. Neither implemented yet.
 - Status page: QR pairing, connection badge; refresh 10s while pairing, 120s
   otherwise; hidden per-message decision log at `&events=1`.
 
-## Current production data (as of 2026-08-02)
+## Current production data (read live from the API, 2026-08-19)
 
-- **LIVE with 60 real users and 540 tracking IDs**, ramping toward 150–200.
-  See the dashboard Overview tab for the current list. The sender number in the
-  DB must exactly match E.164 format (`+92...`).
-- **Reply preference has flipped to hub-first: 48 users on `hub`, 12 on
-  `direct`.** The docs elsewhere describe `direct` as "the default", which is
-  still true for a newly created user, but it is no longer the common case —
-  most replies are now article links, so a website outage degrades far more
-  users than it used to (fail-safe still applies: they get the tagged Amazon
-  link instead).
-- **19 portal accounts** exist (41 registered users have none) — the admin can
-  create them from Portal administration → Accounts.
-- **Real volume: 137–300 links/day from 16–24 active senders** over the week to
-  2026-08-02. So roughly a third of registered users are active on a given day,
-  and volume is concentrated: one sender has historically been 55–70% of it.
-  This matters for the ban-risk maths in Known constraints — the aggregate is
-  well under the 20k/day the client projects.
+- **75 registered users, 748 tracking IDs**, ramping toward 150–200. The sender
+  number in the DB must exactly match E.164 format (`+92...`).
+- **Ten marketplaces**: the nine Amazon countries plus **WM (Walmart)**.
+- **Reply preference is now overwhelmingly hub: 71 `hub`, 4 `direct`.** `direct`
+  remains the default for a *newly created* user, but it is now rare — so a
+  website outage degrades nearly everyone (fail-safe still applies: they get the
+  tagged Amazon link instead of an article).
+- **Walmart is rolled out**: 73 of 75 users have a Walmart identifier, so
+  Walmart messages return affiliate links for almost everyone.
+- **Per-user publishing sites in use**: 70 on the default (beastaffiliates.com),
+  and 5 spread across beastfinds / beastscart / beastsdeal.
+- **27 portal accounts** (48 users have none). Since self-signup was closed, the
+  admin creating them is the only route.
+- **Real volume, week to 2026-08-19: 288–505 links/day** — roughly double the
+  137–300 seen two weeks earlier. Still far below the 20k/day the client
+  projects, but the trend matters for the ban-risk maths in Known constraints,
+  and number sharding was always pencilled in for ~80–100 users.
 - **The owner's own row still has placeholder tags** (`testabc` / `test123`) from
-  the 2026-07-13 delivery testing, so links the owner generates personally earn
-  nothing. Other users' tags looked real as of 2026-07-22 and have not been
-  re-verified since. Real pre-test tags for the original 9 users are backed up
-  outside this public repo (developer's local Claude memory); confirm with the
-  owner before assuming any tag state.
+  the 2026-07-13 delivery testing, so links he generates personally earn nothing.
+  Real pre-test tags for the original 9 users are backed up outside this public
+  repo (developer's local Claude memory); confirm with the owner before assuming
+  any tag state.
 - **Developer testing runs through the owner's own number**, which inflates his
-  row in the daily report on days when resolver work happens (e.g. 2026-08-02:
-  83 of the day's 98 links were verification traffic, not real usage). Worth
-  saying out loud before the owner reads a surprising report.
-- The bot's number was replaced in July 2026; the old one's matching DB user was
-  deleted during testing — register the bot's CURRENT number for self-chat
-  testing. The owner's own number is registered as a normal user ("Tehman").
-  **Actual numbers are deliberately not recorded here — this repo is public.**
-  They live in the developer's local Claude memory and the dashboard.
+  row in the daily report on days when work happens. Say so before he reads a
+  surprising report.
+- The bot's number was replaced in July 2026. **A second number is now published
+  on all five marketing sites** as the "For Premium Products" contact — it is
+  NOT the bot, and it belongs to a registered user. **Actual numbers are
+  deliberately not recorded here — this repo is public.**
 
 ## Testing
 
@@ -411,8 +491,18 @@ randomize typing vs "recording" presence. Neither implemented yet.
   stale-fallback, the 404-tried-once path and the time budget are all
   reproducible exactly. Runs standalone against in-memory SQLite; no server, no
   network, so this is the one suite that is safe to run anywhere.
+- `test_message.py` — 90 **offline** cases for message understanding: countries,
+  keywords, task fields, the reply layout, the bilingual replies, and the
+  carried-over text. Includes the client's real forwarded messages verbatim, and
+  the guards that must never break ("is it in stock" is not amazon.it).
+- `test_walmart.py` — 20 offline cases for Walmart link building, including the
+  two that would lose money silently: never append `?tag=` to a Walmart URL, and
+  never use `subId1` where `sharedid` is required.
+- `test_walmart_messages.py` — 19 offline cases for messages that name Walmart.
 
-63 + 10 = **73 cases total**, all green as of 2026-08-02.
+**212 cases total**, all green as of 2026-08-19. The offline suites
+(`test_message`, `test_walmart*`, `test_canonical`, `test_resolve_cache`) need
+no server and are the fastest way to check nothing broke.
 
 Run: start the API, then `uv run python tests/test_api.py` (override target with
 `API_BASE=https://...`); `test_canonical.py` runs standalone. Update `SENDER` constants if the registered number changes.
@@ -470,33 +560,48 @@ Note these are plain scripts, **not** pytest — run them with `python`, not
   `beast-affiliates-website` repo. Full design and build history:
   [PORTAL-PLAN.md](PORTAL-PLAN.md).
 
-## Open items / explained but not built (as of 2026-08-02)
+## Open items (as of 2026-08-19)
 
-1. **Bilingual English + Urdu error replies** — the owner asked for the bot to
-   explain *why* it could not answer, in one reply, in both languages. Fully
-   scoped and explained; decisions already made: stay silent to unregistered
-   senders, and only speak up for real problems (not for "this message has no
-   link"). NOT built — the owner never confirmed the wording or the
-   website-outage case. Would need an EC2 adapter redeploy, since the adapter
-   only sends when `links_replaced > 0`.
-2. **Facebook links** need a residential proxy (see Resolver); no proxy service
-   has been chosen or costed.
-3. **Rotate the Gmail app password** used by the report email — it was passed
-   through a chat transcript. Outstanding.
-4. **Real contact email for the marketing site** — still the placeholder
-   `support@beastaffiliates.com` with a `mailto:` form. Owner never supplied one.
-5. **Create-link-from-web** — the last original v1 exclusion still unbuilt.
-6. **No restore button** for the backup ZIP (download only), and **no backup of
+The client's improvement list is finished. What remains is small and mostly
+waiting on someone else.
+
+1. **Review the Urdu** in the bilingual replies. They are live and were written
+   by the developer, not a native speaker. The owner has not read them yet.
+2. **Two disclaimer lines for keyword search links** — the client promised
+   wording and never sent it. Already a config value (`KEYWORD_DISCLAIMER`), so
+   they appear the moment it is set; no deploy needed.
+3. **The client's Impact finance setup is incomplete** — their dashboard shows
+   ~$208 pending, a $0 balance, and an identity/banking verification alert. They
+   will not be paid until it is done. Nothing for us to build.
+4. **Confirm Impact reports break down by SharedId** before relying on it to
+   split Walmart earnings per user.
+5. **Facebook links** need a residential proxy (see Resolver); none chosen.
+6. **Rotate the Gmail app password** used by the report email — it was passed
+   through a chat transcript. Still outstanding.
+7. **Real contact email for the marketing site** — still the placeholder
+   `support@beastaffiliates.com` with a `mailto:` form.
+8. **Create-link-from-web** — the last original v1 exclusion still unbuilt.
+9. **No restore button** for the backup ZIP (download only), and **no backup of
    the EC2 Baileys `session/` folder** — losing that instance still needs a QR
    re-pair.
-7. **Auto-leave-group listener** — asked for, then paused. Zero-code mitigation
-   available today: phone → Settings → Privacy → Groups → "Nobody".
-8. ~~`Amazon APIs/` folder of live credential CSVs inside this public repo~~ —
-   **resolved**: the folder is no longer in the project directory and nothing
-   matching it is tracked (verified 2026-08-02). Keep it that way; PA-API keys
-   belong only in the website project's Vercel env vars. Two real phone numbers
-   were also scrubbed from these docs earlier — note that git *history* still
-   contains them, so treat history as public.
+10. **Auto-leave-group listener** — asked for, then paused. Zero-code mitigation:
+    phone → Settings → Privacy → Groups → "Nobody".
+11. **AWS EC2 free tier ends ~September 2026.** The owner has floated moving to a
+    fresh AWS account every 6 months to re-claim it — that breaches AWS terms and
+    was rejected once already (PORTAL-PLAN.md). If the account is closed, the bot
+    AND anything else hosted there die together. Advice on record: move the
+    adapter to Oracle Always Free or a ~$5/mo VPS, and keep the database
+    somewhere else so one migration cannot take out both.
+12. **Neon compute** — the website DB exhausted its free monthly allowance on
+    2026-08-18 and the owner bought a paid plan. Root cause was a *setting*, not
+    traffic: it autoscales to 2 CU while the bot's is pinned at .25 CU, and a
+    CU-hour is compute × time, so it burned the same allowance up to 8× faster.
+    Capping it would likely fit inside the free tier again. Migration to
+    Supabase/other was discussed and not decided — the app is plain SQLAlchemy on
+    a `DATABASE_URL`, so any Postgres works, but the website DB holds every
+    article link ever shared and a botched move breaks them permanently.
+13. ~~`Amazon APIs/` credential CSVs in this public repo~~ — resolved 2026-08-02.
+    Note git *history* still contains two real phone numbers; treat it as public.
 
 ## Agreed scale-up test plan (2026-07-13, not yet executed)
 
