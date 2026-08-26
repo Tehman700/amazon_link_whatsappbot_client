@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.rewriter import rewrite_url  # noqa: E402
+from app.rewriter import replace_urls, rewrite_url  # noqa: E402
 
 passed = failed = 0
 
@@ -84,6 +84,24 @@ check(
     rewrite_url("https://www.amazon.com/stores/page/ABC?tag=other-20", "t-20"),
     "https://www.amazon.com/stores/page/ABC?tag=t-20",
 )
+
+# replace_urls: the keyword-search fallback echoes the sender's message with
+# its dead / unresolvable link swapped for the tagged search link.
+check("replace_urls swaps the link in place, keeps the rest",
+      replace_urls("before https://sagcart.com/product/-P-x after", "SEARCH"),
+      "before SEARCH after")
+check("replace_urls preserves the lines around a multi-line message",
+      replace_urls("Note" + chr(10) + "https://sagcart.com/x" + chr(10) + "more", "SEARCH"),
+      "Note" + chr(10) + "SEARCH" + chr(10) + "more")
+check("replace_urls prepends the link when the message has none",
+      replace_urls("USA" + chr(10) + "Fitness Tracker", "SEARCH"),
+      "SEARCH" + chr(10) + "USA" + chr(10) + "Fitness Tracker")
+check("replace_urls keeps only the first link, drops extras",
+      replace_urls("x https://a.com/1 y https://b.com/2 z", "S"),
+      "x S y  z")
+check("replace_urls leaves trailing punctuation out of the link",
+      replace_urls("see https://a.com/1, thanks", "S"),
+      "see S, thanks")
 
 print(f"\n{passed} passed, {failed} failed")
 raise SystemExit(1 if failed else 0)

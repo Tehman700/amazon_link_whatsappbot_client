@@ -13,6 +13,7 @@ from ..rewriter import (
     extract_asin,
     find_urls,
     process_text,
+    replace_urls,
     tagged_product_link,
 )
 
@@ -36,17 +37,6 @@ LINK_CODE_RE = re.compile(r"^[A-HJ-NP-Z2-9]{6}$")
 # primary + 5 linked. MUST match MAX_WA_NUMBERS in the website's portal.py —
 # the portal shows the allowance and hands out codes, this enforces it on claim.
 MAX_NUMBERS_PER_USER = 6
-
-
-def _keyword_reply(parsed, marketplace, tag: str) -> str:
-    """A tagged search link, plus the client's disclaimer lines when they have
-    supplied them, so nobody mistakes a search for a specific product."""
-    link = message.search_url(marketplace.domain, parsed.keyword, tag)
-    parts = [f"\U0001F50D {parsed.keyword}", link]
-    if message.KEYWORD_DISCLAIMER:
-        parts.append(message.KEYWORD_DISCLAIMER)
-    parts.append(message.BRANDING)
-    return "\n\n".join(parts)
 
 
 def _walmart_reply(text: str, parsed, wm, tag: str | None) -> str | None:
@@ -235,10 +225,16 @@ async def process_message(payload: schemas.ProcessRequest, db: Session = Depends
                             marketplace_code=marketplace.code)
             ]
         elif tag and parsed.keyword:
-            # No product, but enough to search for one. A search link has no
-            # ASIN, so it never becomes an article — it is returned as-is,
-            # signed with the branding by _keyword_reply.
-            text = _keyword_reply(parsed, marketplace, tag)
+            # No product could be resolved, but there is a keyword to search for.
+            # Echo the sender's message exactly as they wrote it, with its dead /
+            # unresolvable link swapped for a tagged search link, so nothing they
+            # sent is dropped. A search link has no ASIN, so it never becomes an
+            # article — it is returned as-is.
+            search = message.search_url(marketplace.domain, parsed.keyword, tag)
+            body = replace_urls(payload.text, search)
+            if message.KEYWORD_DISCLAIMER:
+                body = f"{body}\n\n{message.KEYWORD_DISCLAIMER}"
+            text = f"{body}\n\n{message.BRANDING}"
             return schemas.ProcessResponse(
                 text=text, links_replaced=1, replacements=[], skipped=[],
             )

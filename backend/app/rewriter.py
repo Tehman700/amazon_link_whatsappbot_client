@@ -77,6 +77,30 @@ def find_urls(text: str) -> list[str]:
     ]
 
 
+def replace_urls(text: str, replacement: str) -> str:
+    """Echo `text` with its first URL swapped for `replacement` and any further
+    URLs dropped, keeping everything else exactly.
+
+    The keyword-search fallback uses this to reply with the sender's whole
+    message when their link could not be resolved: the dead/unresolvable link is
+    replaced by a tagged search link rather than echoed back untagged, and
+    nothing else the sender wrote is lost. With no URL in the text, `replacement`
+    is prepended on its own line."""
+    out: list[str] = []
+    last_end = 0
+    placed = False
+    for m in URL_RE.finditer(text):
+        raw = _clean_url_match(m.group(0))
+        out.append(text[last_end : m.start()])
+        if not placed:
+            out.append(replacement)
+            placed = True
+        last_end = m.start() + len(raw)
+    out.append(text[last_end:])
+    body = "".join(out)
+    return body if placed else f"{replacement}\n{body}"
+
+
 # Amazon product id (ASIN) in a URL path: /dp/<ASIN>, /gp/product/<ASIN>, ...
 ASIN_PATH_RE = re.compile(r"/(?:dp|gp/product|gp/aw/d|product)/([A-Z0-9]{10})(?=[/?]|$)")
 

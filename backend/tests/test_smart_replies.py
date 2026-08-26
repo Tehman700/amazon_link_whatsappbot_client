@@ -127,5 +127,20 @@ check("a link that leads nowhere is explained",
 check("the original link is not echoed back in the explanation",
       "example.com" not in r["text"], r["text"])
 
+# a dead / unresolvable link plus a keyword: the whole message comes back
+# with the link swapped for a tagged search link, nothing trimmed (the bug
+# that motivated this: it used to collapse to just the keyword).
+msg = chr(10).join(["Country: USA", "Keyword: Yoga Mat",
+                    "https://beast-nope.invalid/x", "Sold By: TestSeller",
+                    "Price: 20 dollars"])
+r = post(msg)
+check("a dead link + keyword echoes the whole message with a search link",
+      r["links_replaced"] == 1
+      and "/s?k=Yoga+Mat" in r["text"]
+      and ".invalid" not in r["text"]
+      and "Sold By: TestSeller" in r["text"]
+      and "Price: 20 dollars" in r["text"]
+      and r["text"].rstrip().endswith("Beast"), r["text"])
+
 print(f"\n{passed} passed, {failed} failed")
 raise SystemExit(1 if failed else 0)
