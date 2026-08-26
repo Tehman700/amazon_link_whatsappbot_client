@@ -127,9 +127,35 @@ async def _site_specific(
                 if link and match_marketplace(_host(link), domain_map):
                     return link
 
-    # ilearner.dev/link/<id> and ilearner-store.com/p/<id>[/slug]
-    # -> api.ilearner.dev/go/<id> 302s straight to the Amazon URL
+    # iLearner funnel links — two shapes, two resolution mechanisms:
+    #   /link/<id> and ilearner-store.com/p/<id>[/slug]
+    #     -> api.ilearner.dev/go/<id> 302s straight to the product URL.
+    #   /w/<token> — their "Walmart hub" share page, a JS SPA whose HTML holds
+    #     no product link -> api.ilearner.dev/api/walmart/hub/<token> returns
+    #     JSON with "productUrl" (the raw walmart.com/ip/<id>). Their
+    #     /w/<token>/click redirect carries the same URL but bumps their click
+    #     analytics, so the JSON endpoint is used instead.
+    # Either shape returns the product URL only when it is one of our configured
+    # marketplaces (Amazon or Walmart); the sender's own tag / sharedid is
+    # applied downstream, exactly as for a link pasted directly.
     if host == "ilearner.dev" or host.endswith((".ilearner.dev", "ilearner-store.com")):
+        m = re.search(r"/w/([A-Za-z0-9_-]+)", parts.path)
+        if m:
+            try:
+                r = await client.get(
+                    f"https://api.ilearner.dev/api/walmart/hub/{m.group(1)}"
+                )
+            except httpx.HTTPError:
+                return None
+            if r.status_code == 200:
+                try:
+                    link = (r.json() or {}).get("productUrl") or ""
+                except ValueError:
+                    link = ""
+                if link and match_marketplace(_host(link), domain_map):
+                    return link
+            return None
+
         m = re.search(r"/(?:link|p)/([A-Za-z0-9_-]+)", parts.path)
         if m:
             try:

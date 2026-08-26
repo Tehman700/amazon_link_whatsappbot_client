@@ -43,7 +43,8 @@ check(
     and "tag=" in r["text"]
     and "pointmarketing.shop" not in r["text"]
     and r["text"].startswith("check this out ")
-    and r["text"].endswith(" nice product"),
+    and " nice product" in r["text"]
+    and r["text"].rstrip().endswith("Beast"),
     r,
 )
 if r.get("replacements"):
@@ -72,7 +73,25 @@ check(
     and "amazon.fr" in r["text"]
     and "tag=" in r["text"]
     and r["text"].startswith("Sold by\nAmazon EU\n")
-    and r["text"].endswith("\nMust order through link"),
+    and "\nMust order through link" in r["text"]
+    and r["text"].rstrip().endswith("Beast"),
+    r,
+)
+if r.get("replacements"):
+    print("      ->", r["replacements"][0]["rewritten"][:130])
+
+# 3b. NEW: ilearner.dev/w/<token> "Walmart hub" (JS SPA) -> walmart product,
+# resolved via api.ilearner.dev/api/walmart/hub/<token> (JSON productUrl).
+s, r = post("Check this ilearner walmart deal https://ilearner.dev/w/4Esq2XiKJO nice")
+check(
+    "ilearner.dev/w/ (Walmart hub) -> walmart product link, caption intact",
+    s == 200
+    and r["links_replaced"] == 1
+    and "ilearner.dev" not in r["text"]
+    and "walmart.com" in r["text"]
+    and "19948217614" in r["text"]
+    and r["text"].startswith("Check this ilearner walmart deal ")
+    and r["text"].rstrip().endswith("Beast"),
     r,
 )
 if r.get("replacements"):
@@ -90,7 +109,9 @@ check(
 s, r = post("https://www.amazon.com/dp/B0GS64BBG2?th=1")
 check(
     "direct amazon link still works (regression)",
-    s == 200 and r["text"] == "https://www.amazon.com/dp/B0GS64BBG2?th=1&tag=beastaffiliate-20",
+    s == 200
+    and r["text"].startswith("https://www.amazon.com/dp/B0GS64BBG2?th=1&tag=beastaffiliate-20")
+    and r["text"].rstrip().endswith("Beast"),
     r,
 )
 
