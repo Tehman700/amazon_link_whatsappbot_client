@@ -23,10 +23,11 @@ def _flag(name: str, default: str = "true") -> bool:
     return os.getenv(name, default).strip().lower() not in ("0", "false", "no", "off")
 
 
-# Both new behaviours can be switched off from the environment without a code
-# change, the way MUST_LINK_FEATURE was — if either one misreads a real message
-# in production, it can be stopped in the time it takes to redeploy.
-STRUCTURED_REPLY = _flag("STRUCTURED_REPLY")
+# ALWAYS_REPLY can be switched off from the environment without a code change,
+# the way MUST_LINK_FEATURE was — if it misreads a real message in production,
+# it can be stopped in the time it takes to redeploy. (The old STRUCTURED_REPLY
+# layout was retired: every link reply is now the sender's message echoed back
+# with the link(s) swapped and signed with message.BRANDING.)
 ALWAYS_REPLY = _flag("ALWAYS_REPLY")
 
 # Linking codes use an unambiguous alphabet (no 0/O/1/I) — see the website's
@@ -69,8 +70,6 @@ def _walmart_reply(text: str, parsed, wm, tag: str | None) -> str | None:
         return message.say("no_product")
 
     link = walmart.affiliate_url(target, tag)
-    if STRUCTURED_REPLY and parsed.is_task:
-        return message.format_task_reply(parsed, link, "US")
     return "\n\n".join([link, message.BRANDING])
 
 
@@ -237,19 +236,9 @@ async def process_message(payload: schemas.ProcessRequest, db: Session = Depends
             ]
         elif tag and parsed.keyword:
             # No product, but enough to search for one. A search link has no
-            # ASIN, so it never becomes an article — it is returned as-is.
-            # A task message still gets the client's layout: the forwarded ones
-            # carry a seller and a price, and dropping to a bare search link
-            # would throw away everything the sender wrote.
-            if STRUCTURED_REPLY and parsed.is_task:
-                text = message.format_task_reply(
-                    parsed,
-                    message.search_url(marketplace.domain, parsed.keyword, tag),
-                    marketplace.code,
-                    note=message.KEYWORD_DISCLAIMER,
-                )
-            else:
-                text = _keyword_reply(parsed, marketplace, tag)
+            # ASIN, so it never becomes an article — it is returned as-is,
+            # signed with the branding by _keyword_reply.
+            text = _keyword_reply(parsed, marketplace, tag)
             return schemas.ProcessResponse(
                 text=text, links_replaced=1, replacements=[], skipped=[],
             )
@@ -258,16 +247,6 @@ async def process_message(payload: schemas.ProcessRequest, db: Session = Depends
     # user's portal with its own view/click tracking. Only hub users get the
     # article URL in their WhatsApp reply; direct users keep the tagged Amazon
     # link. Fail-safe: any website-side problem leaves new_text as built above.
-    # A review-task message gets the client's layout instead of an echo. Built
-    # BEFORE the article swap on purpose: the block carries the tagged link, so
-    # publish_articles finds and replaces it exactly as it would in any reply.
-    if replacements and STRUCTURED_REPLY and parsed.is_task:
-        new_text = message.format_task_reply(
-            parsed,
-            replacements[0].rewritten,
-            parsed.country or replacements[0].marketplace_code,
-        )
-
     if replacements:
         swap_reply = getattr(user, "link_preference", "direct") == "hub"
         try:
@@ -276,6 +255,9 @@ async def process_message(payload: schemas.ProcessRequest, db: Session = Depends
             )
         except Exception:
             pass
+        # Sign every link reply: the sender's message echoed back with the
+        # link(s) swapped, and the brand mark on its own line at the very end.
+        new_text = f"{new_text}\n\n{message.BRANDING}"
 
     # Nothing could be produced. Say why, rather than leaving the sender
     # wondering — but only when they were actually trying to get a link.

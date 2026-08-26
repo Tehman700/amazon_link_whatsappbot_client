@@ -1,7 +1,7 @@
 """End-to-end behaviour for issues #5 and #6, against a running API.
 
 Two things are being protected here. The new behaviour has to work — a country
-written as a flag, a task message coming back in the client's layout, a failure
+written as a flag, a task message echoed back plainly and signed, a failure
 being explained instead of ignored. And the old behaviour has to be untouched:
 a shared link must still come back as the same message with only the link
 swapped, because that is what 60 people rely on every day.
@@ -42,13 +42,13 @@ def check(name, cond, detail=""):
 
 # ------------------------------------------- the old pipeline is untouched
 r = post("https://www.amazon.com/dp/B0GS64BBG2?th=1")
-check("a plain link is still just the link, tagged",
+check("a plain link comes back tagged and signed",
       r["links_replaced"] == 1 and r["text"].startswith("https://")
-      and "Beast" not in r["text"], r["text"])
+      and r["text"].rstrip().endswith("Beast"), r["text"])
 
 r = post("Usa review\nhttps://www.amazon.com/dp/B0GS64BBG2\nthanks")
-check("a caption is still passed through untouched",
-      r["text"].startswith("Usa review\n") and r["text"].endswith("\nthanks"), r["text"])
+check("a caption is passed through untouched, then signed",
+      r["text"].startswith("Usa review\n") and "\nthanks" in r["text"] and r["text"].rstrip().endswith("Beast"), r["text"])
 
 r = post("hello, no links here")
 check("ordinary chatter is still answered with silence",
@@ -92,23 +92,22 @@ r = post("USA\nFitness Tracker")
 check("country and keyword on bare lines work too",
       "/s?k=Fitness+Tracker" in r["text"], r["text"])
 
-# ------------------------------------------------- the task layout (#5)
+# ------------------------------ a task message is now a plain echo (#5)
 task = ("Country: USA\nRequire: Text Review\nKeyword: Fitness Tracker\n"
         "Sold By: Smart Gathering\nPrice: $39.99\nASIN: B0GS64BBG2")
 r = post(task)
 t = r["text"]
-check("a review task comes back in the client's layout",
-      "Country: USA" in t and "Require: Text Review" in t
-      and "Product Details" in t and "Sold By: Smart Gathering" in t, t)
-check("the layout carries the tagged link", "tag=" in t, t)
-check("the layout is branded", t.rstrip().endswith("Beast"), t)
-check("fields the sender never sent are not printed",
-      "Refund" not in t, t)
+check("a review task is echoed back, not reformatted",
+      "Product Details" not in t
+      and "Country: USA" in t and "Sold By: Smart Gathering" in t, t)
+check("the reply carries the tagged link", "tag=" in t, t)
+check("the reply is signed", t.rstrip().endswith("Beast"), t)
 
 # a task without the fields must NOT be reformatted
 r = post("Country: USA\nhttps://www.amazon.com/dp/B0GS64BBG2")
-check("a country plus a link is left as a normal reply",
-      "Product Details" not in r["text"], r["text"])
+check("a country plus a link is echoed and signed",
+      "Product Details" not in r["text"]
+      and r["text"].rstrip().endswith("Beast"), r["text"])
 
 # --------------------------------------------------- saying why (#5)
 r = post("ASIN: B0GS64BBG2")
