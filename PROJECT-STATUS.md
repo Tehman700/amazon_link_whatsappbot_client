@@ -1,11 +1,11 @@
 # Project Status — WhatsApp Amazon Affiliate Link Bot
 
-Last updated: 2026-08-19. Read [project-handout.md](project-handout.md) first for the
+Last updated: 2026-09-01. Read [project-handout.md](project-handout.md) first for the
 original client spec; this file records everything built and deployed since.
 
-**System is LIVE with ~75 real users, ramping toward 150–200.** Latest deployed
-commit: `b953f85` (Walmart message routing). All three tiers auto-deploy on
-`git push`.
+**System is LIVE with 77 real users, ramping toward 150–200.** Latest deployed
+commit: `84cc488` (keyword-search fallback echoes the whole message). All three
+tiers auto-deploy on `git push`.
 
 > **`design.md` was deleted by the owner on 2026-08-19**, along with
 > `Platform_Improvements_Feature_Requests.md` (the client's request list). The
@@ -20,6 +20,22 @@ owner's own approach rather than the one their document described — do not
 reopen it.
 
 ### Quick history (newest first)
+- **Plain-echo replies + keyword fallback echo** (`6e644be`, `84cc488`,
+  2026-08/09) — the structured "Country / Product Details / Link" template was
+  RETIRED; every reply is now the sender's message echoed back with only the
+  link(s) swapped and `✨ Beast` on its own line at the end. The keyword-search
+  fallback echoes the whole message too (dead/unresolvable link → tagged search
+  link), no longer trimming to just the keyword. `STRUCTURED_REPLY` and
+  `format_task_reply` are gone. See Message parsing.
+- **iLearner `/w/<token>` "Walmart hub" links** (`eb48466`, 2026-08/09) — the
+  resolver now follows iLearner's `/w/<token>` JS share pages via
+  `api.ilearner.dev/api/walmart/hub/<token>` (JSON `productUrl`) to the real
+  walmart.com/amazon product, then the normal pipeline tags it. See Resolver.
+- **Bot DB moved to a Neon Pro account** (2026-08) — migrated off the Free
+  Vercel-integrated Neon (compute-hour limits) to a Pro Neon project
+  (`ep-cold-shape-au0uwqwe`); verified end-to-end. A further move off Neon to
+  Supabase is planned (Free tier meters compute-hours, and every message queries
+  this DB). See Architecture.
 - **Walmart, end to end** (`c1f4633`, `be87765`, `b953f85`, 2026-08-18/19) — a
   message naming Walmart now returns a Walmart affiliate link. See Walmart below.
 - **Per-user publishing sites** (`2dd4783`, 2026-08-07) — the admin chooses which
@@ -143,7 +159,7 @@ wrong or untagged reply.
 |---|---|---|---|
 | Core API | FastAPI + SQLAlchemy | Vercel serverless, root dir `backend/` | https://amazon-link-whatsappbot-client.vercel.app (docs at `/docs`) |
 | Admin dashboard | React + TS (Vite) | Vercel, root dir `frontend/` | https://amazon-link-whatsappbot-client-t1u5.vercel.app |
-| Database | Neon Postgres (free) | Provisioned via Vercel Storage; `DATABASE_URL` injected into the API project | — |
+| Database | Neon Postgres (**Pro account**, `ep-cold-shape-au0uwqwe`) | Migrated 2026-08 off the Free Vercel-integrated Neon; `DATABASE_URL` is now a plain env var on the API project. **Every message queries it** (sender lookup), so a move off Neon to Supabase (no compute-hour meter) is planned. | — |
 | WhatsApp adapter | Node 20 + Baileys | AWS EC2 (Ubuntu), pm2 app name `wa-adapter`, repo cloned at `~/amazon_link_whatsappbot_client` | `http://<EC2-IP>:4000/?token=<STATUS_TOKEN>` (token in `whatsapp-adapter/.env` on the server) |
 
 GitHub: https://github.com/Tehman700/amazon_link_whatsappbot_client (public — never
@@ -184,6 +200,13 @@ commit secrets).
   - `ilearner.dev/link/<id>`, `ilearner-store.com/p/<id>[/slug]`, `*.ilearner.dev`
     → GET `https://api.ilearner.dev/go/<id>` (302 Location = Amazon URL; note:
     this increments their click analytics)
+  - `ilearner.dev/w/<token>` (their JS-rendered "Walmart hub" share page, whose
+    HTML holds no product link) → GET
+    `https://api.ilearner.dev/api/walmart/hub/<token>` → JSON `productUrl` (the
+    raw walmart.com/ip/<id>, or an Amazon URL — whichever is a configured
+    marketplace). The JSON endpoint is used rather than the `/w/<token>/click`
+    redirect so their click count is NOT inflated. `test_ilearner_hub.py`
+    (offline) + a live case in `test_funnels.py`.
   - **our own** `/p/<id>` and `/go/<id>` on both article domains → the website's
     key-guarded `GET /api/links/{id}/resolve`, which records NO view/click, so
     forwarding never inflates the original creator's stats.
@@ -269,16 +292,20 @@ commit secrets).
     sender's original link back would hand the buyer an untagged route to the
     product. No length cap: truncating would mean choosing which of their words
     to discard.
-  - **The layout** is the client's template; fields the sender did not provide
-    are dropped rather than printed empty. Branding is `✨ Beast`, defined once
-    in `BRANDING`.
+  - **The layout** — RETIRED (2026-08/09, `6e644be`). Replies no longer use the
+    structured "Country / Product Details / Link" template. The bot echoes the
+    sender's message with only the link(s) swapped and `✨ Beast` (defined once in
+    `BRANDING`) on its own line at the end — the older passthrough behaviour, plus
+    the sign-off. `format_task_reply` is now unused; `STRUCTURED_REPLY` was
+    removed. The keyword-search fallback echoes the whole message the same way,
+    swapping a dead/unresolvable link for the tagged search link (`84cc488`).
   - **What to say when nothing can be built** — bilingual English + Urdu, one
     message, no "I", no error-dump tone. Silence is still the answer to "ok" or
     a sticker: `_explain()` only speaks when the sender was actually trying to
     get a link. Replying to everything would roughly double what this number
     sends per day, which is exactly the signal WhatsApp bans for.
-  - Env flags `STRUCTURED_REPLY` and `ALWAYS_REPLY` switch the layout and the
-    explanations off independently, without a code change.
+  - Env flag `ALWAYS_REPLY` switches the bilingual explanations off without a
+    code change. (`STRUCTURED_REPLY` was retired along with the structured layout.)
 - `walmart.py` — **Walmart affiliate links, via the client's Impact account.**
   Walmart has no tag to append: a link *wraps* the product URL. Which builder
   runs is decided by the marketplace's **domain**, not its code, so it follows
@@ -445,7 +472,7 @@ randomize typing vs "recording" presence. Neither implemented yet.
 
 ## Current production data (read live from the API, 2026-08-19)
 
-- **75 registered users, 748 tracking IDs**, ramping toward 150–200. The sender
+- **77 registered users, 768 tracking IDs**, ramping toward 150–200. The sender
   number in the DB must exactly match E.164 format (`+92...`).
 - **Ten marketplaces**: the nine Amazon countries plus **WM (Walmart)**.
 - **Reply preference is now overwhelmingly hub: 71 `hub`, 4 `direct`.** `direct`

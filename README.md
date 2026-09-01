@@ -79,9 +79,11 @@ python tests/test_api.py               # needs a local server + seeded DB
 - **Message understanding** (`app/message.py`) — works out the country, keyword
   and task fields from however the sender wrote them: labels with a colon, a
   fullwidth colon, dots, no separator at all, or a label alone with its value on
-  the next line. Replies in the client's layout, carries through anything it did
-  not recognise, and explains itself in English and Urdu when it cannot build a
-  link. 90 offline tests.
+  the next line. The reply **echoes the sender's message with only the link(s)
+  swapped and `✨ Beast` at the end** (the structured "Country / Product Details"
+  template was retired 2026-08/09); it carries through anything it did not
+  recognise and explains itself in English and Urdu when it cannot build a link.
+  90 offline tests.
 - **Walmart** (`app/walmart.py`) — Walmart affiliate links through the client's
   Impact account. Walmart has no tag to append: the link wraps the product URL,
   and the per-user identifier rides in `sharedid` (NOT `subId1`, which

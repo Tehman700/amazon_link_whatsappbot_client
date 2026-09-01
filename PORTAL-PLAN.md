@@ -451,7 +451,74 @@ harness's file edits — restart the process after editing.
    `session/` folder is still not backed up. See PROJECT-STATUS.md.
 7. Create-link-from-web (users minting a link in the portal rather than over
    WhatsApp) is the only original v1 exclusion still unbuilt.
-8. **Hub is now the majority reply format** — 48 of 60 users on `hub` vs 12 on
-   `direct` (2026-08-02). The fail-safe still holds (a mint failure leaves the
-   tagged Amazon link), but a website outage now degrades most users rather than
-   a handful. Worth remembering before treating this repo as the "optional" one.
+8. **Hub is now the majority reply format** — ~72 of 77 users on `hub` vs 4 on
+   `direct` (2026-09-01; was 48/60 on 2026-08-02). The fail-safe still holds (a
+   mint failure leaves the tagged Amazon link), but a website outage now degrades
+   most users rather than a handful. Worth remembering before treating this repo
+   as the "optional" one.
+9. **Next-phase automation updates (client PDF) — NOT built yet.** See the
+   section below; blocked on sample reports + the shared-tracking-ID decision.
+
+## Next-phase automation updates (client PDF, 2026-08/09 — NOT built yet)
+
+Source: `Affiliate Automation System Updates.pdf` (bot repo root). Three
+**additive** features; must not disturb existing link-generation / bot / website /
+dashboards. Client to supply real Amazon sample reports (+ the remaining
+countries').
+
+**1. Automatic report → earnings import.** Upload a country's Amazon Associates
+report; match tracking IDs to users, compute each user's share (their % → PKR via
+an FX rate), and ADD it to their earnings (never replace), with a preview before
+Confirm.
+- **Report format (from real US + DE sample CSVs):** Amazon "Earnings by Tracking
+  ID" summary — one row per tag, same 12 columns in the same order across all
+  countries (parse by **position**, language-agnostic), amounts in the
+  marketplace's local currency, `-` = null, an `others` catch-all row to **skip**.
+  **No dates and no order/transaction IDs in the file** → the PDF's
+  date/transaction-ID dedup is impossible; dedup uses an admin-declared period +
+  an import ledger.
+- **Only 5 columns are used** (owner decision): `Tracking Id`, `Total Earnings`
+  (= net commission = shipped − returned; the payable base), `Items Ordered`,
+  `Items Shipped`, `Items Returned`. Bonus and the rest are ignored.
+- **Flow:** upload (+ marketplace, period, FX rate) → parse → match tag within the
+  chosen marketplace → calc PKR + order counts → dedupe vs an import ledger
+  (never the displayed balance) → preview (matched / duplicates / unmatched) →
+  Confirm writes additive `earnings_entries` (kind "report") + a rollback-able
+  ledger batch. **Open decision:** does the owner download non-overlapping
+  periods (declare-period + preview) or cumulative-from-fixed-start (delta)?
+
+**2. Multiple WhatsApp numbers per user.** Mostly already built: `linked_numbers`
+(bot DB) already makes the bot treat any linked number as the primary user. NEW:
+admin **add/authorize a number directly** (bypass the linking-code flow), edit, an
+**active/inactive flag** (new), full admin CRUD; raise/remove the cap
+(`MAX_NUMBERS_PER_USER=6`, **must stay == `MAX_WA_NUMBERS` here**). Merging the many
+duplicate accounts (Shahzaib/2/3, Riaz×3, …) here also removes shared-tag noise.
+
+**3. Refer & Earn.** Half built: `referrals` + admin add/edit/delete exist. NEW: a
+user-facing "Add a Referral" form (portal Earnings tab) with lead fields + a
+status pipeline (Pending / Contacted / Approved / Active / Rejected), a
+configurable referral % (default 10%) that auto-computes the referrer's reward
+from the referred user's eligible earnings, and linking referred→referrer on
+conversion.
+
+The existing earnings model already gives the required invariant:
+**Existing + Report + Manual + Referral = Total**, independent additive records.
+
+### The shared-tracking-ID constraint (blocks report auto-attribution)
+
+Audited live 2026-09-01: **all 77 users share at least one tracking ID; 43 Amazon
+tags (excl. Walmart) are each used by 2–62 users** (ES `pz0d5-21` = 62, FR
+`beast093-21` = 34, AU/IT ≈ 32, CA `faliure0d-20` = 28, DE `pz068-21` = 27, WM
+`wasam` = all 73, …). Root cause: Amazon caps **~100 tracking IDs per account**,
+but 77 users × 9 countries ≈ 700 are needed, so non-US tags get reused. Amazon
+reports earnings **per tag** → a shared tag is one combined total that cannot be
+split exactly. So report auto-attribution works cleanly only for **US** (tags
+mostly unique). Full breakdown PDF: `Amazon Bot Project\Shared-Tracking-IDs.pdf`.
+
+**Recommended handling (layered):** (1) US + any uniquely-tagged user → exact;
+(2) shared tags → **estimate** the split by the bot's own per-user click/link data
+(`link_events`), shown in the import preview for admin override — the competitor's
+model; (3) **merge duplicate accounts** via feature #2; (4) reserve the ~100
+unique tags per country for the top earners; (5) investigate Amazon **SubIDs
+(`ascsubtag`)** for exact in-tag attribution (verify it reports reliably first).
+Avoid opening more Amazon accounts (ToS / suspension risk).
