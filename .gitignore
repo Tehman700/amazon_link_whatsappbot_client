@@ -31,3 +31,11 @@ Thumbs.db
 
 # Local prototypes - not part of the deployed product
 hub-prototype/
+
+# Client-supplied Amazon reports and generated data exports — contain real
+# tracking IDs / user names; this repo is PUBLIC, so never commit them.
+*-report.csv
+*Tracking-Id*.csv
+Shared-Tracking-IDs.pdf
+Affiliate Automation System Updates.pdf
+.claude/
