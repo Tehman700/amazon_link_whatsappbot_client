@@ -36,6 +36,6 @@ hub-prototype/
 # tracking IDs / user names; this repo is PUBLIC, so never commit them.
 *-report.csv
 *Tracking-Id*.csv
-Shared-Tracking-IDs.pdf
+Shared-Tracking-IDs*.pdf
 Affiliate Automation System Updates.pdf
 .claude/

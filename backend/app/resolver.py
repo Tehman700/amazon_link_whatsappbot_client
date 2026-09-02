@@ -49,6 +49,18 @@ RETRY_DELAY_SECONDS = float(os.getenv("RESOLVE_RETRY_DELAY", "0.7"))
 # Ceiling on the whole resolve step so a message full of slow links can never
 # push the reply past the serverless limit; whatever is left stays untouched.
 RESOLVE_BUDGET_SECONDS = float(os.getenv("RESOLVE_BUDGET_SECONDS", "25.0"))
+# reviewstrident.com serves its pages only to a real browser — it stalls plain
+# HTTP clients (curl, httpx, even ones impersonating a browser's TLS), so its
+# page never yields an Amazon link to the normal fetch+scan. This ONE host is
+# resolved by rendering it through Jina Reader (r.jina.ai), which runs a headless
+# browser server-side and returns the page with its links. Nothing else uses it;
+# unset JINA_READER_BASE to disable.
+JINA_READER_BASE = os.getenv("JINA_READER_BASE", "https://r.jina.ai").rstrip("/")
+JINA_TIMEOUT = float(os.getenv("JINA_TIMEOUT", "20.0"))
+# Optional free Jina key, sent as a Bearer token — higher rate limits and it
+# skips r.jina.ai's Cloudflare bot check. Works without it (keyless), just with
+# tighter limits.
+JINA_API_KEY = os.getenv("JINA_API_KEY", "").strip()
 # A bare User-Agent gets refused by some hosts (WooCommerce storefronts return
 # 403, Facebook 400). Sending the rest of what a real browser sends makes those
 # pages return 200 so their Amazon link can be found.
@@ -78,6 +90,28 @@ async def _follow(client: httpx.AsyncClient, url: str) -> httpx.Response | None:
         return await client.get(url)
     except httpx.HTTPError:
         return None
+
+
+async def _render_via_jina(url: str) -> str:
+    """`url` rendered through Jina Reader (a server-side headless browser),
+    returning the page text with its links, or "" on failure.
+
+    A dedicated minimal client on purpose: r.jina.ai sits behind Cloudflare,
+    which 403s the resolver's browser-header client — so we must NOT reuse it. A
+    clean request (optionally carrying a Jina API key) goes through."""
+    if not JINA_READER_BASE:
+        return ""
+    headers = {"X-With-Links-Summary": "true"}
+    if JINA_API_KEY:
+        headers["Authorization"] = f"Bearer {JINA_API_KEY}"
+    try:
+        async with httpx.AsyncClient(follow_redirects=True) as jc:
+            r = await jc.get(
+                f"{JINA_READER_BASE}/{url}", headers=headers, timeout=JINA_TIMEOUT
+            )
+    except httpx.HTTPError:
+        return ""
+    return r.text if r.status_code == 200 else ""
 
 
 async def _site_specific(
@@ -167,6 +201,20 @@ async def _site_specific(
             location = r.headers.get("location", "")
             if location and match_marketplace(_host(location), domain_map):
                 return location
+
+    # reviewstrident.com — see JINA_READER_BASE above. Rendered through Jina
+    # Reader (with its links summary so the "Buy Now" button's href is included),
+    # then scanned for the marketplace link the normal fetch can never reach.
+    # This host only; every other site keeps the plain fetch+scan behaviour.
+    if JINA_READER_BASE and (
+        host == "reviewstrident.com" or host.endswith(".reviewstrident.com")
+    ):
+        rendered = await _render_via_jina(url)
+        for candidate in URL_IN_HTML_RE.findall(html.unescape(rendered)):
+            candidate = candidate.rstrip(_TRAILING)
+            if match_marketplace(_host(candidate), domain_map):
+                return candidate
+        return None
 
     return None
 
