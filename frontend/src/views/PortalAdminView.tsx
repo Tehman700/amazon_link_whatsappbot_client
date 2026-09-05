@@ -42,9 +42,6 @@ export default function PortalAdminView() {
     { username: string; pw: string; kind: "created" | "reset" } | null
   >(null);
   const [copied, setCopied] = useState("");
-  // auto-report-0.1: only show its tabs when the website has AUTO_REPORT enabled
-  // (the report-import endpoints 404 otherwise).
-  const [autoReport, setAutoReport] = useState(false);
 
   const load = useCallback(() => {
     portalAdmin
@@ -57,12 +54,6 @@ export default function PortalAdminView() {
   }, []);
 
   useEffect(load, [load]);
-  useEffect(() => {
-    portalAdmin
-      .reportDates()
-      .then(() => setAutoReport(true))
-      .catch(() => setAutoReport(false));
-  }, []);
 
   if (error) return <div className="error-box">{error}</div>;
   if (!data) return <p className="muted">Loading portal data…</p>;
@@ -77,12 +68,8 @@ export default function PortalAdminView() {
             ["linked", "Linked numbers"],
             ["payouts", "Payout details"],
             ["performance", "Overall performance"],
-            ...(autoReport
-              ? [
-                  ["usrate", "US Rate"],
-                  ["reports", "Reports"],
-                ]
-              : []),
+            ["usrate", "US Rate"],
+            ["reports", "Reports"],
           ] as [SubTab, string][]
         ).map(([key, label]) => (
           <button
@@ -141,8 +128,8 @@ export default function PortalAdminView() {
       {sub === "linked" && <LinkedTab data={data} refresh={load} onError={setError} />}
       {sub === "payouts" && <PayoutsTab accounts={data.accounts} />}
       {sub === "performance" && <PerformanceTab />}
-      {autoReport && sub === "usrate" && <RateTab />}
-      {autoReport && sub === "reports" && <ReportsTab />}
+      {sub === "usrate" && <RateTab />}
+      {sub === "reports" && <ReportsTab />}
     </section>
   );
 }
