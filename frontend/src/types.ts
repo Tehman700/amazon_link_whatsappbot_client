@@ -203,3 +203,44 @@ export interface LoginsData {
   storage_enabled: boolean;
   accounts: LoginRow[];
 }
+
+// auto-report-0.1 — US report earnings import.
+export interface ReportPreviewUser {
+  account_id: number;
+  username: string;
+  earnings_usd: number;
+  rate: number;
+  gross_pkr: number;
+  net_pkr: number;
+  ordered: number;
+  shipped: number;
+  returned: number;
+}
+export interface ReportDuplicateTag {
+  tag: string;
+  account_ids: number[];
+  usernames: string[];
+}
+export interface ReportPreview {
+  marketplace: string;
+  report_date: string;
+  fx_rate: number;
+  already_imported: boolean;
+  users: ReportPreviewUser[];
+  user_count: number;
+  total_net_pkr: number;
+  duplicate_tags: ReportDuplicateTag[];
+  unmatched_tags: string[];
+  rows_parsed: number;
+}
+export interface ReportRecordResult {
+  ok: boolean;
+  import_id: number;
+  report_date: string;
+  earnings_entries_created: number;
+  users: number;
+}
+export interface ReportDates {
+  marketplace: string;
+  dates: string[];
+}

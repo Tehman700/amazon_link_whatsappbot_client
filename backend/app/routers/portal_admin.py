@@ -420,3 +420,107 @@ async def earnings_update_referral(account_id: int, referral_id: int, request: R
 @router.delete("/earnings/{account_id}/referrals/{referral_id}")
 def earnings_delete_referral(account_id: int, referral_id: int):
     return _website("DELETE", f"/api/admin/earnings/{account_id}/referrals/{referral_id}")
+
+
+# ------------------------------------------------------------- auto-report-0.1
+# US report -> earnings import. The bot parses the uploaded CSV and matches
+# tracking IDs to portal-account users (it owns tracking_ids); the website does
+# the money + dedup (it owns earnings). Revert: git tag pre-auto-report-0.1, or
+# delete this block. Dormant unless the website has AUTO_REPORT enabled (its
+# endpoints 404 otherwise, surfaced here as 404).
+
+from pydantic import BaseModel  # noqa: E402
+
+from .. import report  # noqa: E402
+
+
+def _portal_us_tag_map(db: Session):
+    """{US tracking id -> [portal account_id]} for portal-account users, plus
+    {account_id -> username}. A US tag on >1 portal account is the ambiguous
+    case the matcher flags."""
+    accounts = _website("GET", "/api/admin/accounts").get("accounts", [])
+    users_by_number = {u.whatsapp_number: u for u in db.query(models.User).all()}
+    tag_to_accounts: dict[str, list[int]] = {}
+    username_by_id: dict[int, str] = {}
+    for a in accounts:
+        username_by_id[a["id"]] = a.get("username", "")
+        user = users_by_number.get(a["whatsapp_number"])
+        if user is None:
+            continue
+        us_tag = next(
+            (t.tag for t in user.tracking_ids if t.marketplace.code == "US"), None
+        )
+        if us_tag:
+            tag_to_accounts.setdefault(us_tag, []).append(a["id"])
+    return tag_to_accounts, username_by_id
+
+
+def _build_entries(db: Session, csv_text: str) -> dict:
+    """Parse a US report + match it to portal users. Returns the entries to send
+    to the website plus the bot-side alerts (duplicate tags, unmatched)."""
+    rows = report.parse_report(csv_text)
+    tag_map, username_by_id = _portal_us_tag_map(db)
+    mr = report.match_portal(rows, tag_map)
+    entries = [
+        {"account_id": acc, "earnings_usd_cents": r.earnings_usd_cents,
+         "ordered": r.ordered, "shipped": r.shipped, "returned": r.returned}
+        for r, acc in mr.matched
+    ]
+    return {
+        "entries": entries,
+        "duplicate_tags": [
+            {"tag": tag, "account_ids": accs,
+             "usernames": [username_by_id.get(a, "") for a in accs]}
+            for tag, accs in mr.duplicate_tags
+        ],
+        "unmatched_tags": mr.unmatched,
+        "rows_parsed": len(rows),
+    }
+
+
+@router.get("/report-import/dates")
+def report_import_dates():
+    """Dates already imported (for the calendar to colour red)."""
+    return _website("GET", "/api/admin/report-import/dates?marketplace=US")
+
+
+class _ReportUpload(BaseModel):
+    report_date: str          # the day this report's data covers (YYYY-MM-DD)
+    fx_rate: float            # PKR per USD, entered by the admin at upload
+    csv_text: str             # the report file's text (the frontend reads it)
+
+
+@router.post("/report-import/preview")
+def report_import_preview(body: _ReportUpload, db: Session = Depends(get_db)):
+    built = _build_entries(db, body.csv_text)
+    pv = _website("POST", "/api/admin/report-import/preview", {
+        "marketplace": "US", "report_date": body.report_date,
+        "fx_rate": body.fx_rate, "entries": built["entries"],
+    })
+    pv.update({k: built[k] for k in ("duplicate_tags", "unmatched_tags", "rows_parsed")})
+    return pv
+
+
+@router.post("/report-import/record")
+def report_import_record(body: _ReportUpload, db: Session = Depends(get_db)):
+    built = _build_entries(db, body.csv_text)
+    if built["duplicate_tags"]:
+        raise HTTPException(
+            409,
+            "Duplicate US tracking IDs among portal users — resolve these before "
+            "importing: " + ", ".join(d["tag"] for d in built["duplicate_tags"]),
+        )
+    return _website("POST", "/api/admin/report-import/record", {
+        "marketplace": "US", "report_date": body.report_date,
+        "fx_rate": body.fx_rate, "entries": built["entries"],
+    })
+
+
+@router.get("/report-import/rate")
+def report_import_get_rate():
+    return _website("GET", "/api/admin/report-import/rate")
+
+
+@router.put("/report-import/rate")
+async def report_import_set_rate(request: Request):
+    return _website("PUT", "/api/admin/report-import/rate", await request.json())

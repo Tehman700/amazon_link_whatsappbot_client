@@ -13,9 +13,10 @@ import type {
   PortalAdminData,
   PortalAdminLink,
   ReferralOut,
+  ReportPreview,
 } from "../types";
 
-type SubTab = "accounts" | "logins" | "linked" | "payouts" | "performance";
+type SubTab = "accounts" | "logins" | "linked" | "payouts" | "performance" | "usrate" | "reports";
 
 // Where users sign in. One portal for everyone, whatever article domain their
 // links land on, so this is a constant rather than per-user. Prod builds
@@ -67,6 +68,8 @@ export default function PortalAdminView() {
             ["linked", "Linked numbers"],
             ["payouts", "Payout details"],
             ["performance", "Overall performance"],
+            ["usrate", "US Rate"],
+            ["reports", "Reports"],
           ] as [SubTab, string][]
         ).map(([key, label]) => (
           <button
@@ -125,6 +128,8 @@ export default function PortalAdminView() {
       {sub === "linked" && <LinkedTab data={data} refresh={load} onError={setError} />}
       {sub === "payouts" && <PayoutsTab accounts={data.accounts} />}
       {sub === "performance" && <PerformanceTab />}
+      {sub === "usrate" && <RateTab />}
+      {sub === "reports" && <ReportsTab />}
     </section>
   );
 }
@@ -1826,5 +1831,311 @@ function UserEarnings({ accountId, accounts }: { accountId: number; accounts: Ea
         {data.payouts.length === 0 && <p className="muted">No payouts recorded yet.</p>}
       </div>
     </>
+  );
+}
+
+/* ---------------------------------------------------------- auto-report-0.1
+   US report earnings import. Pick the report date on the calendar (red = already
+   imported, blue = selected), enter the USD->PKR rate, choose the CSV, Preview,
+   then Confirm. Only portal users are matched; it only ADDS earnings.
+   Revert: remove the "reports" subtab + these two components. */
+
+function ImportCalendar({
+  imported,
+  selected,
+  onSelect,
+}: {
+  imported: Set<string>;
+  selected: string;
+  onSelect: (iso: string) => void;
+}) {
+  const today = new Date();
+  const [view, setView] = useState<{ y: number; m: number }>({
+    y: today.getFullYear(),
+    m: today.getMonth(),
+  });
+  const first = new Date(view.y, view.m, 1);
+  const daysInMonth = new Date(view.y, view.m + 1, 0).getDate();
+  const iso = (d: number) =>
+    `${view.y}-${String(view.m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  const cells: (number | null)[] = [];
+  for (let i = 0; i < first.getDay(); i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+  return (
+    <div style={{ maxWidth: 300 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+        <button className="cell-btn" onClick={() => setView((v) => (v.m === 0 ? { y: v.y - 1, m: 11 } : { y: v.y, m: v.m - 1 }))}>&lsaquo;</button>
+        <strong>{first.toLocaleString(undefined, { month: "long", year: "numeric" })}</strong>
+        <button className="cell-btn" onClick={() => setView((v) => (v.m === 11 ? { y: v.y + 1, m: 0 } : { y: v.y, m: v.m + 1 }))}>&rsaquo;</button>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3, textAlign: "center" }}>
+        {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
+          <span key={i} className="muted" style={{ fontSize: 11 }}>{d}</span>
+        ))}
+        {cells.map((d, i) => {
+          if (d === null) return <span key={`e${i}`} />;
+          const day = iso(d);
+          const isImported = imported.has(day);
+          const isSel = selected === day;
+          return (
+            <button
+              key={day}
+              onClick={() => onSelect(day)}
+              title={isImported ? "Already imported" : ""}
+              style={{
+                padding: "6px 0",
+                borderRadius: 6,
+                border: "1px solid var(--hairline, #ddd)",
+                cursor: "pointer",
+                background: isSel ? "#2563eb" : isImported ? "#dc2626" : "transparent",
+                color: isSel || isImported ? "#fff" : "inherit",
+                fontWeight: isSel || isImported ? 600 : 400,
+              }}
+            >
+              {d}
+            </button>
+          );
+        })}
+      </div>
+      <div className="muted" style={{ fontSize: 11, marginTop: 8 }}>
+        <span style={{ color: "#2563eb" }}>&#9632;</span> selected &nbsp;
+        <span style={{ color: "#dc2626" }}>&#9632;</span> already imported
+      </div>
+    </div>
+  );
+}
+
+function ReportsTab() {
+  const [dates, setDates] = useState<string[]>([]);
+  const [selected, setSelected] = useState("");
+  const [fx, setFx] = useState("");
+  const [csvText, setCsvText] = useState("");
+  const [fileName, setFileName] = useState("");
+  const [preview, setPreview] = useState<ReportPreview | null>(null);
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const loadDates = useCallback(() => {
+    portalAdmin
+      .reportDates()
+      .then((d) => setDates(d.dates))
+      .catch((e) => setMsg(String((e as Error)?.message ?? e)));
+  }, []);
+  useEffect(loadDates, [loadDates]);
+  useEffect(() => {
+    portalAdmin
+      .reportRate()
+      .then((r) => { if (r.rate > 0) setFx(String(r.rate)); })
+      .catch(() => {});
+  }, []);
+
+  const imported = new Set(dates);
+  const takeFile = (f: File | null) => {
+    if (!f) return;
+    setFileName(f.name);
+    setPreview(null);
+    const r = new FileReader();
+    r.onload = () => setCsvText(String(r.result ?? ""));
+    r.readAsText(f);
+  };
+
+  const doPreview = async () => {
+    setMsg("");
+    setPreview(null);
+    if (!selected) return setMsg("Pick the report date on the calendar.");
+    if (!csvText) return setMsg("Choose the US report CSV file.");
+    const fxn = parseFloat(fx);
+    if (!fxn || fxn <= 0) return setMsg("Enter the USD to PKR rate.");
+    setBusy(true);
+    try {
+      setPreview(await portalAdmin.reportPreview({ report_date: selected, fx_rate: fxn, csv_text: csvText }));
+    } catch (e) {
+      setMsg(String((e as Error)?.message ?? e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const doRecord = async () => {
+    setBusy(true);
+    setMsg("");
+    try {
+      const res = await portalAdmin.reportRecord({ report_date: selected, fx_rate: parseFloat(fx), csv_text: csvText });
+      setMsg(`Imported ${res.earnings_entries_created} earning(s) for ${selected}.`);
+      setPreview(null);
+      setCsvText("");
+      setFileName("");
+      loadDates();
+    } catch (e) {
+      setMsg(String((e as Error)?.message ?? e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const dupes = preview?.duplicate_tags ?? [];
+  const canConfirm = Boolean(preview && !preview.already_imported && dupes.length === 0);
+
+  return (
+    <div>
+      <h3>US report import</h3>
+      <p className="muted">
+        Upload the daily US Amazon &ldquo;Earnings by Tracking ID&rdquo; report. It matches only
+        portal-account users and only ADDS new earnings &mdash; nothing existing changes.
+      </p>
+      <div style={{ display: "flex", gap: 28, flexWrap: "wrap", alignItems: "flex-start" }}>
+        <div>
+          <label className="muted" style={{ fontSize: 12 }}>Report date</label>
+          <ImportCalendar imported={imported} selected={selected} onSelect={setSelected} />
+        </div>
+        <div style={{ minWidth: 240 }}>
+          <div style={{ marginBottom: 12 }}>
+            <label className="muted" style={{ fontSize: 12, display: "block" }}>USD to PKR rate</label>
+            <input value={fx} onChange={(e) => setFx(e.target.value)} placeholder="e.g. 278.5" inputMode="decimal" />
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <label className="muted" style={{ fontSize: 12, display: "block" }}>US report CSV</label>
+            <input type="file" accept=".csv,text/csv" onChange={(e) => takeFile(e.target.files?.[0] ?? null)} />
+            {fileName && <div className="muted" style={{ fontSize: 12 }}>{fileName}</div>}
+          </div>
+          <button className="cell-btn" disabled={busy} onClick={doPreview}>
+            {busy ? "Working..." : "Preview"}
+          </button>
+        </div>
+      </div>
+
+      {msg && <div className="temp-pw" style={{ marginTop: 14 }}>{msg}</div>}
+
+      {selected && imported.has(selected) && !preview && (
+        <div className="error-box" style={{ marginTop: 14 }}>
+          {selected} has already been imported (red on the calendar). Re-importing is blocked.
+        </div>
+      )}
+
+      {preview && (
+        <div style={{ marginTop: 18 }}>
+          {preview.already_imported && (
+            <div className="error-box" style={{ marginBottom: 12 }}>
+              {preview.report_date} was already imported &mdash; Confirm is disabled to avoid double-counting.
+            </div>
+          )}
+          {dupes.length > 0 && (
+            <div className="error-box" style={{ marginBottom: 12 }}>
+              Duplicate US tracking IDs among portal users &mdash; resolve before importing:
+              <ul style={{ margin: "6px 0 0" }}>
+                {dupes.map((d) => (
+                  <li key={d.tag}>
+                    <code>{d.tag}</code> &mdash; {d.usernames.map((u) => "@" + u).join(", ")}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <p className="muted" style={{ fontSize: 13 }}>
+            {preview.rows_parsed} report rows &middot; {preview.user_count} matched portal users &middot;{" "}
+            {preview.unmatched_tags.length} unmatched tags &middot; total to add:{" "}
+            <strong>Rs {preview.total_net_pkr.toLocaleString()}</strong>
+          </p>
+          <table style={{ borderCollapse: "collapse", width: "100%", marginTop: 8, fontSize: 13 }}>
+            <thead>
+              <tr style={{ textAlign: "left", borderBottom: "1px solid var(--hairline, #ddd)" }}>
+                <th style={{ padding: "6px 10px" }}>User</th>
+                <th style={{ padding: "6px 10px" }}>USD</th>
+                <th style={{ padding: "6px 10px" }}>Rate</th>
+                <th style={{ padding: "6px 10px" }}>PKR (net)</th>
+                <th style={{ padding: "6px 10px" }}>Ordered</th>
+                <th style={{ padding: "6px 10px" }}>Shipped</th>
+                <th style={{ padding: "6px 10px" }}>Returned</th>
+              </tr>
+            </thead>
+            <tbody>
+              {preview.users.map((u) => (
+                <tr key={u.account_id} style={{ borderBottom: "1px solid var(--hairline, #eee)" }}>
+                  <td style={{ padding: "6px 10px" }}>@{u.username}</td>
+                  <td style={{ padding: "6px 10px" }}>${u.earnings_usd.toFixed(2)}</td>
+                  <td style={{ padding: "6px 10px" }}>{u.rate}%</td>
+                  <td style={{ padding: "6px 10px" }}>Rs {u.net_pkr.toLocaleString()}</td>
+                  <td style={{ padding: "6px 10px" }}>{u.ordered}</td>
+                  <td style={{ padding: "6px 10px" }}>{u.shipped}</td>
+                  <td style={{ padding: "6px 10px" }}>{u.returned}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <button className="cell-btn" style={{ marginTop: 12 }} disabled={busy || !canConfirm} onClick={doRecord}>
+            {busy ? "Importing..." : `Confirm import for ${preview.report_date}`}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* auto-report-0.1 — fix the USD to PKR rate used by the US report import. */
+function RateTab() {
+  const [rate, setRate] = useState("");
+  const [saved, setSaved] = useState<number | null>(null);
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    portalAdmin
+      .reportRate()
+      .then((r) => {
+        setSaved(r.rate);
+        if (r.rate > 0) setRate(String(r.rate));
+      })
+      .catch((e) => setMsg(String((e as Error)?.message ?? e)));
+  }, []);
+
+  const save = async () => {
+    const n = parseFloat(rate);
+    if (!n || n <= 0) {
+      setMsg("Enter a rate greater than 0.");
+      return;
+    }
+    setBusy(true);
+    setMsg("");
+    try {
+      const res = await portalAdmin.reportSetRate(n);
+      setSaved(res.rate);
+      setMsg(`Saved. US report earnings now convert at Rs ${res.rate} per $1.`);
+    } catch (e) {
+      setMsg(String((e as Error)?.message ?? e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ maxWidth: 440 }}>
+      <h3>US exchange rate</h3>
+      <p className="muted">
+        The USD to PKR rate applied to US report earnings. Set it here once and the
+        Reports import picks it up automatically (still overridable per upload).
+      </p>
+      {saved !== null && (
+        <p className="muted" style={{ fontSize: 13 }}>
+          Current:{" "}
+          {saved > 0 ? <strong>Rs {saved} per $1</strong> : <em>not set yet</em>}
+        </p>
+      )}
+      <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+        <span className="muted">Rs</span>
+        <input
+          value={rate}
+          onChange={(e) => setRate(e.target.value)}
+          placeholder="e.g. 278.5"
+          inputMode="decimal"
+          style={{ maxWidth: 140 }}
+        />
+        <span className="muted">per $1</span>
+        <button className="cell-btn" disabled={busy} onClick={save}>
+          {busy ? "Saving..." : "Save rate"}
+        </button>
+      </div>
+      {msg && <div className="temp-pw" style={{ marginTop: 14 }}>{msg}</div>}
+    </div>
   );
 }
