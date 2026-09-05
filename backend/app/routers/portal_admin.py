@@ -486,8 +486,8 @@ def report_import_dates():
 
 class _ReportUpload(BaseModel):
     report_date: str          # the day this report's data covers (YYYY-MM-DD)
-    fx_rate: float            # PKR per USD, entered by the admin at upload
     csv_text: str             # the report file's text (the frontend reads it)
+    # The USD->PKR rate is the stored one (US Rate tab), applied website-side.
 
 
 @router.post("/report-import/preview")
@@ -495,7 +495,7 @@ def report_import_preview(body: _ReportUpload, db: Session = Depends(get_db)):
     built = _build_entries(db, body.csv_text)
     pv = _website("POST", "/api/admin/report-import/preview", {
         "marketplace": "US", "report_date": body.report_date,
-        "fx_rate": body.fx_rate, "entries": built["entries"],
+        "entries": built["entries"],
     })
     pv.update({k: built[k] for k in ("duplicate_tags", "unmatched_tags", "rows_parsed")})
     return pv
@@ -512,7 +512,7 @@ def report_import_record(body: _ReportUpload, db: Session = Depends(get_db)):
         )
     return _website("POST", "/api/admin/report-import/record", {
         "marketplace": "US", "report_date": body.report_date,
-        "fx_rate": body.fx_rate, "entries": built["entries"],
+        "entries": built["entries"],
     })
 
 

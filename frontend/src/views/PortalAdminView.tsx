@@ -1909,7 +1909,7 @@ function ImportCalendar({
 function ReportsTab() {
   const [dates, setDates] = useState<string[]>([]);
   const [selected, setSelected] = useState("");
-  const [fx, setFx] = useState("");
+  const [rate, setRate] = useState<number | null>(null);
   const [csvText, setCsvText] = useState("");
   const [fileName, setFileName] = useState("");
   const [preview, setPreview] = useState<ReportPreview | null>(null);
@@ -1926,7 +1926,7 @@ function ReportsTab() {
   useEffect(() => {
     portalAdmin
       .reportRate()
-      .then((r) => { if (r.rate > 0) setFx(String(r.rate)); })
+      .then((r) => setRate(r.rate))
       .catch(() => {});
   }, []);
 
@@ -1945,11 +1945,10 @@ function ReportsTab() {
     setPreview(null);
     if (!selected) return setMsg("Pick the report date on the calendar.");
     if (!csvText) return setMsg("Choose the US report CSV file.");
-    const fxn = parseFloat(fx);
-    if (!fxn || fxn <= 0) return setMsg("Enter the USD to PKR rate.");
+    if (!rate || rate <= 0) return setMsg("Set the US exchange rate first in the US Rate tab.");
     setBusy(true);
     try {
-      setPreview(await portalAdmin.reportPreview({ report_date: selected, fx_rate: fxn, csv_text: csvText }));
+      setPreview(await portalAdmin.reportPreview({ report_date: selected, csv_text: csvText }));
     } catch (e) {
       setMsg(String((e as Error)?.message ?? e));
     } finally {
@@ -1961,7 +1960,7 @@ function ReportsTab() {
     setBusy(true);
     setMsg("");
     try {
-      const res = await portalAdmin.reportRecord({ report_date: selected, fx_rate: parseFloat(fx), csv_text: csvText });
+      const res = await portalAdmin.reportRecord({ report_date: selected, csv_text: csvText });
       setMsg(`Imported ${res.earnings_entries_created} earning(s) for ${selected}.`);
       setPreview(null);
       setCsvText("");
@@ -1991,8 +1990,15 @@ function ReportsTab() {
         </div>
         <div style={{ minWidth: 240 }}>
           <div style={{ marginBottom: 12 }}>
-            <label className="muted" style={{ fontSize: 12, display: "block" }}>USD to PKR rate</label>
-            <input value={fx} onChange={(e) => setFx(e.target.value)} placeholder="e.g. 278.5" inputMode="decimal" />
+            <label className="muted" style={{ fontSize: 12, display: "block" }}>US current exchange rate</label>
+            {rate && rate > 0 ? (
+              <div>
+                <strong>Rs {rate} per $1</strong>{" "}
+                <span className="muted" style={{ fontSize: 12 }}>(set in the US Rate tab)</span>
+              </div>
+            ) : (
+              <div className="muted" style={{ fontSize: 13 }}>Not set &mdash; set it in the US Rate tab first.</div>
+            )}
           </div>
           <div style={{ marginBottom: 12 }}>
             <label className="muted" style={{ fontSize: 12, display: "block" }}>US report CSV</label>
