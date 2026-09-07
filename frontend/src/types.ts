@@ -225,7 +225,9 @@ export interface ReportPreview {
   marketplace: string;
   report_date: string;
   fx_rate: number;
-  already_imported: boolean;
+  existing_reports: number;   // reports this day already has
+  report_seq: number;         // the number this upload would become
+  already_paid_users: string[]; // soft overlap warning
   users: ReportPreviewUser[];
   user_count: number;
   total_net_pkr: number;
@@ -237,10 +239,12 @@ export interface ReportRecordResult {
   ok: boolean;
   import_id: number;
   report_date: string;
+  report_seq: number;
   earnings_entries_created: number;
   users: number;
 }
 export interface ReportDates {
   marketplace: string;
   dates: string[];
+  counts: Record<string, number>;
 }

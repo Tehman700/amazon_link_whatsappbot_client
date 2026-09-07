@@ -599,3 +599,208 @@ button.btn-red-solid:disabled {
   color: var(--ink);
   white-space: nowrap;
 }
+
+/* ================================================= auto-report-0.1 Reports tab
+   An aligned, card-based upload section: calendar on the left, upload controls
+   on the right, then the editable preview below. Built on the same tokens as
+   the rest of the panel so it inherits dark mode. */
+.report-import h3 { margin-bottom: var(--sp-xs); }
+
+.report-panel {
+  display: grid;
+  grid-template-columns: auto minmax(260px, 1fr);
+  gap: var(--sp-section);
+  align-items: start;
+  background: var(--soft-cloud);
+  border-radius: var(--rounded-md);
+  padding: var(--sp-xl);
+  margin-top: var(--sp-lg);
+}
+@media (max-width: 760px) {
+  .report-panel { grid-template-columns: 1fr; gap: var(--sp-xl); }
+}
+
+.report-col-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mute);
+  margin-bottom: var(--sp-sm);
+}
+
+.report-upload-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-lg);
+}
+.report-upload-col .primary { align-self: flex-start; }
+
+.report-rate { font-size: 22px; font-weight: 800; color: var(--ink); line-height: 1.2; }
+.report-rate span { font-size: 12px; font-weight: 500; color: var(--mute); }
+.report-rate.muted { font-size: 14px; font-weight: 500; color: var(--mute); }
+
+/* Custom file picker — the native input is hidden inside the label. */
+.report-file {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-md);
+  flex-wrap: wrap;
+  cursor: pointer;
+}
+.report-file input { display: none; }
+.report-file-btn {
+  display: inline-flex;
+  align-items: center;
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--rounded-lg);
+  padding: 8px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.report-file:hover .report-file-btn { background: var(--soft-cloud); }
+.report-file-name { font-size: 13px; color: var(--mute); }
+
+.report-daynote {
+  font-size: 13px;
+  color: var(--charcoal);
+  background: var(--canvas);
+  border: 1px solid var(--hairline-soft);
+  border-radius: 12px;
+  padding: 10px 14px;
+}
+
+/* Calendar */
+.report-cal { width: 300px; max-width: 100%; }
+.report-cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--sp-md);
+}
+.report-cal-title { font-size: 15px; font-weight: 700; color: var(--ink); }
+.report-cal-nav {
+  width: 34px;
+  height: 34px;
+  min-height: 0;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--rounded-full);
+  font-size: 18px;
+  line-height: 1;
+}
+.report-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+.report-dow {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--stone);
+  padding-bottom: 2px;
+}
+.report-day {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--hairline-soft);
+  border-radius: 10px;
+  background: var(--canvas);
+  color: var(--ink);
+  font-size: 14px;
+  min-height: 0;
+  padding: 0;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.report-day:hover { background: var(--soft-cloud); }
+.report-day.imp {
+  background: var(--sale);
+  border-color: var(--sale);
+  color: #fff;
+  font-weight: 700;
+}
+.report-day.sel {
+  background: var(--info);
+  border-color: var(--info);
+  color: #fff;
+  font-weight: 700;
+}
+.report-day-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: var(--rounded-full);
+  background: var(--ink);
+  color: var(--on-primary);
+  font-size: 10px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 0 2px var(--soft-cloud);
+}
+.report-cal-legend {
+  display: flex;
+  gap: var(--sp-lg);
+  margin-top: var(--sp-md);
+  font-size: 12px;
+  color: var(--mute);
+}
+.report-legend-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+/* Preview */
+.report-preview { margin-top: var(--sp-xl); }
+.report-summary { font-size: 14px; margin-bottom: 2px; color: var(--charcoal); }
+.report-warn {
+  background: color-mix(in srgb, #e0920a 14%, var(--canvas));
+  border: 1px solid color-mix(in srgb, #e0920a 45%, var(--canvas));
+  border-left: 3px solid #e0920a;
+  color: var(--ink);
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin-bottom: var(--sp-md);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.report-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: var(--sp-sm); }
+.report-table th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mute);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--hairline);
+  white-space: nowrap;
+}
+.report-table td {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--hairline-soft);
+  white-space: nowrap;
+}
+.report-table input {
+  height: 32px;
+  width: 74px;
+  padding: 4px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+.report-usd { display: flex; align-items: center; gap: 3px; }
+.report-usd span { color: var(--mute); }
+.report-usd input { width: 88px; }

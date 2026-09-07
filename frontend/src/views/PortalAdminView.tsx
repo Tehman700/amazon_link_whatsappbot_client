@@ -1835,17 +1835,19 @@ function UserEarnings({ accountId, accounts }: { accountId: number; accounts: Ea
 }
 
 /* ---------------------------------------------------------- auto-report-0.1
-   US report earnings import. Pick the report date on the calendar (red = already
-   imported, blue = selected), enter the USD->PKR rate, choose the CSV, Preview,
-   then Confirm. Only portal users are matched; it only ADDS earnings.
+   US report earnings import. Pick the report date on the calendar (blue =
+   selected, red = has imported reports, with a badge counting how many that
+   day). A day can hold several reports (one per affiliate account); each new
+   upload is numbered. Choose the CSV, Preview, edit if needed, then Confirm.
+   Only portal users are matched; it only ADDS earnings.
    Revert: remove the "reports" subtab + these two components. */
 
 function ImportCalendar({
-  imported,
+  counts,
   selected,
   onSelect,
 }: {
-  imported: Set<string>;
+  counts: Record<string, number>;
   selected: string;
   onSelect: (iso: string) => void;
 }) {
@@ -1861,46 +1863,48 @@ function ImportCalendar({
   const cells: (number | null)[] = [];
   for (let i = 0; i < first.getDay(); i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  const step = (dir: number) =>
+    setView((v) => {
+      const m = v.m + dir;
+      if (m < 0) return { y: v.y - 1, m: 11 };
+      if (m > 11) return { y: v.y + 1, m: 0 };
+      return { y: v.y, m };
+    });
 
   return (
-    <div style={{ maxWidth: 300 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-        <button className="cell-btn" onClick={() => setView((v) => (v.m === 0 ? { y: v.y - 1, m: 11 } : { y: v.y, m: v.m - 1 }))}>&lsaquo;</button>
-        <strong>{first.toLocaleString(undefined, { month: "long", year: "numeric" })}</strong>
-        <button className="cell-btn" onClick={() => setView((v) => (v.m === 11 ? { y: v.y + 1, m: 0 } : { y: v.y, m: v.m + 1 }))}>&rsaquo;</button>
+    <div className="report-cal">
+      <div className="report-cal-head">
+        <button className="report-cal-nav" onClick={() => step(-1)} aria-label="Previous month">&lsaquo;</button>
+        <span className="report-cal-title">
+          {first.toLocaleString(undefined, { month: "long", year: "numeric" })}
+        </span>
+        <button className="report-cal-nav" onClick={() => step(1)} aria-label="Next month">&rsaquo;</button>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3, textAlign: "center" }}>
-        {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
-          <span key={i} className="muted" style={{ fontSize: 11 }}>{d}</span>
+      <div className="report-cal-grid">
+        {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d, i) => (
+          <span key={i} className="report-dow">{d}</span>
         ))}
         {cells.map((d, i) => {
           if (d === null) return <span key={`e${i}`} />;
           const day = iso(d);
-          const isImported = imported.has(day);
-          const isSel = selected === day;
+          const count = counts[day] ?? 0;
+          const cls = "report-day" + (selected === day ? " sel" : count > 0 ? " imp" : "");
           return (
             <button
               key={day}
+              className={cls}
               onClick={() => onSelect(day)}
-              title={isImported ? "Already imported" : ""}
-              style={{
-                padding: "6px 0",
-                borderRadius: 6,
-                border: "1px solid var(--hairline, #ddd)",
-                cursor: "pointer",
-                background: isSel ? "#2563eb" : isImported ? "#dc2626" : "transparent",
-                color: isSel || isImported ? "#fff" : "inherit",
-                fontWeight: isSel || isImported ? 600 : 400,
-              }}
+              title={count > 0 ? `${count} report(s) imported` : ""}
             >
               {d}
+              {count > 0 && <span className="report-day-badge">{count}</span>}
             </button>
           );
         })}
       </div>
-      <div className="muted" style={{ fontSize: 11, marginTop: 8 }}>
-        <span style={{ color: "#2563eb" }}>&#9632;</span> selected &nbsp;
-        <span style={{ color: "#dc2626" }}>&#9632;</span> already imported
+      <div className="report-cal-legend">
+        <span><span className="report-legend-dot" style={{ background: "var(--info)" }} />selected</span>
+        <span><span className="report-legend-dot" style={{ background: "var(--sale)" }} />imported</span>
       </div>
     </div>
   );
@@ -1917,7 +1921,7 @@ type EditRow = {
 };
 
 function ReportsTab() {
-  const [dates, setDates] = useState<string[]>([]);
+  const [counts, setCounts] = useState<Record<string, number>>({});
   const [selected, setSelected] = useState("");
   const [rate, setRate] = useState<number | null>(null);
   const [csvText, setCsvText] = useState("");
@@ -1930,7 +1934,7 @@ function ReportsTab() {
   const loadDates = useCallback(() => {
     portalAdmin
       .reportDates()
-      .then((d) => setDates(d.dates))
+      .then((d) => setCounts(d.counts ?? {}))
       .catch((e) => setMsg(String((e as Error)?.message ?? e)));
   }, []);
   useEffect(loadDates, [loadDates]);
@@ -1941,7 +1945,6 @@ function ReportsTab() {
       .catch(() => {});
   }, []);
 
-  const imported = new Set(dates);
   const takeFile = (f: File | null) => {
     if (!f) return;
     setFileName(f.name);
@@ -1993,33 +1996,11 @@ function ReportsTab() {
         returned: Math.round(r.returned || 0),
       }));
       const res = await portalAdmin.reportRecord({ report_date: selected, entries });
-      setMsg(`Imported ${res.earnings_entries_created} earning(s) for ${selected}.`);
+      setMsg(`Saved as Report ${res.report_seq} for ${selected} — ${res.earnings_entries_created} earning(s) added.`);
       setPreview(null);
       setRows([]);
       setCsvText("");
       setFileName("");
-      loadDates();
-    } catch (e) {
-      setMsg(String((e as Error)?.message ?? e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const doReset = async () => {
-    if (!window.confirm(
-      "Clear ALL imported dates from the calendar?\n\n" +
-      "This wipes the import history (every red date goes back to blank) but " +
-      "does NOT change any earnings balances. Wiped dates become re-importable, " +
-      "so don't re-upload the same day afterwards.")) return;
-    setBusy(true);
-    setMsg("");
-    try {
-      const res = await portalAdmin.reportReset();
-      setMsg(`Calendar reset — cleared ${res.imports_removed} imported date(s). Earnings unchanged.`);
-      setPreview(null);
-      setRows([]);
-      setSelected("");
       loadDates();
     } catch (e) {
       setMsg(String((e as Error)?.message ?? e));
@@ -2036,69 +2017,73 @@ function ReportsTab() {
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
 
   const dupes = preview?.duplicate_tags ?? [];
-  const canConfirm = Boolean(preview && !preview.already_imported && dupes.length === 0);
+  const paid = preview?.already_paid_users ?? [];
+  const canConfirm = Boolean(preview && dupes.length === 0);
+  const selCount = selected ? counts[selected] ?? 0 : 0;
 
   return (
-    <div>
+    <div className="report-import">
       <h3>US report import</h3>
       <p className="muted">
-        Upload the daily US Amazon &ldquo;Earnings by Tracking ID&rdquo; report. It matches only
-        portal-account users and only ADDS new earnings &mdash; nothing existing changes.
+        Upload each day&rsquo;s US Amazon &ldquo;Earnings by Tracking ID&rdquo; report. A day can hold
+        several reports (one per affiliate account) &mdash; each new upload is numbered. It matches only
+        portal-account users and only ADDS new earnings.
       </p>
-      <div style={{ display: "flex", gap: 28, flexWrap: "wrap", alignItems: "flex-start" }}>
-        <div>
-          <label className="muted" style={{ fontSize: 12 }}>Report date</label>
-          <ImportCalendar imported={imported} selected={selected} onSelect={setSelected} />
-          <button
-            className="cell-btn"
-            style={{ marginTop: 10 }}
-            disabled={busy || dates.length === 0}
-            onClick={doReset}
-            title="Clears every imported (red) date. Earnings balances are not changed."
-          >
-            Reset calendar
-          </button>
+
+      <div className="report-panel">
+        <div className="report-cal-col">
+          <div className="report-col-label">Report date</div>
+          <ImportCalendar counts={counts} selected={selected} onSelect={setSelected} />
         </div>
-        <div style={{ minWidth: 240 }}>
-          <div style={{ marginBottom: 12 }}>
-            <label className="muted" style={{ fontSize: 12, display: "block" }}>US current exchange rate</label>
+
+        <div className="report-upload-col">
+          <div className="report-field">
+            <div className="report-col-label">US exchange rate</div>
             {rate && rate > 0 ? (
-              <div>
-                <strong>Rs {rate} per $1</strong>{" "}
-                <span className="muted" style={{ fontSize: 12 }}>(set in the US Rate tab)</span>
+              <div className="report-rate">
+                Rs {rate} <span>per $1 &middot; set in the US Rate tab</span>
               </div>
             ) : (
-              <div className="muted" style={{ fontSize: 13 }}>Not set &mdash; set it in the US Rate tab first.</div>
+              <div className="report-rate muted">Not set &mdash; set it in the US Rate tab first.</div>
             )}
           </div>
-          <div style={{ marginBottom: 12 }}>
-            <label className="muted" style={{ fontSize: 12, display: "block" }}>US report CSV</label>
-            <input type="file" accept=".csv,text/csv" onChange={(e) => takeFile(e.target.files?.[0] ?? null)} />
-            {fileName && <div className="muted" style={{ fontSize: 12 }}>{fileName}</div>}
+
+          <div className="report-field">
+            <div className="report-col-label">US report file</div>
+            <label className="report-file">
+              <input type="file" accept=".csv,text/csv" onChange={(e) => takeFile(e.target.files?.[0] ?? null)} />
+              <span className="report-file-btn">Choose report file</span>
+              <span className="report-file-name">{fileName || "No file chosen"}</span>
+            </label>
           </div>
-          <button className="cell-btn" disabled={busy} onClick={doPreview}>
-            {busy ? "Working..." : "Preview"}
+
+          {selected && (
+            <div className="report-daynote">
+              {selCount > 0 ? (
+                <>
+                  <strong>{selected}</strong> already has {selCount} report{selCount > 1 ? "s" : ""} &mdash;{" "}
+                  this upload will be <strong>Report {selCount + 1}</strong>.
+                </>
+              ) : (
+                <>
+                  <strong>{selected}</strong> &mdash; first report of the day.
+                </>
+              )}
+            </div>
+          )}
+
+          <button className="primary" disabled={busy} onClick={doPreview}>
+            {busy ? "Working…" : "Preview"}
           </button>
         </div>
       </div>
 
-      {msg && <div className="temp-pw" style={{ marginTop: 14 }}>{msg}</div>}
-
-      {selected && imported.has(selected) && !preview && (
-        <div className="error-box" style={{ marginTop: 14 }}>
-          {selected} has already been imported (red on the calendar). Re-importing is blocked.
-        </div>
-      )}
+      {msg && <div className="temp-pw" style={{ marginTop: "var(--sp-lg)" }}>{msg}</div>}
 
       {preview && (
-        <div style={{ marginTop: 18 }}>
-          {preview.already_imported && (
-            <div className="error-box" style={{ marginBottom: 12 }}>
-              {preview.report_date} was already imported &mdash; Confirm is disabled to avoid double-counting.
-            </div>
-          )}
+        <div className="report-preview">
           {dupes.length > 0 && (
-            <div className="error-box" style={{ marginBottom: 12 }}>
+            <div className="error-box" style={{ marginBottom: "var(--sp-md)" }}>
               Duplicate US tracking IDs among portal users &mdash; resolve before importing:
               <ul style={{ margin: "6px 0 0" }}>
                 {dupes.map((d) => (
@@ -2109,80 +2094,69 @@ function ReportsTab() {
               </ul>
             </div>
           )}
-          <p className="muted" style={{ fontSize: 13 }}>
-            {preview.rows_parsed} report rows &middot; {rows.length} matched portal users &middot;{" "}
-            {preview.unmatched_tags.length} unmatched tags &middot; total to add:{" "}
+          {paid.length > 0 && (
+            <div className="report-warn">
+              &#9888; These users already have a report earning for {preview.report_date} from an earlier
+              report today: {paid.map((u) => "@" + u).join(", ")}. Confirming adds again &mdash; only proceed if
+              this is genuinely a different account&rsquo;s report.
+            </div>
+          )}
+          <div className="report-summary">
+            <strong>This will be Report {preview.report_seq}</strong> for {preview.report_date} &middot;{" "}
+            {preview.rows_parsed} rows &middot; {rows.length} matched users &middot;{" "}
+            {preview.unmatched_tags.length} unmatched &middot; total to add:{" "}
             <strong>Rs {totalNet.toLocaleString()}</strong>
-          </p>
-          <p className="muted" style={{ fontSize: 12, marginTop: -4 }}>
+          </div>
+          <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
             All fields except Rate are editable &mdash; correct any value before confirming and the edited
             numbers are what gets published.
           </p>
-          <table style={{ borderCollapse: "collapse", width: "100%", marginTop: 8, fontSize: 13 }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid var(--hairline, #ddd)" }}>
-                <th style={{ padding: "6px 10px" }}>User</th>
-                <th style={{ padding: "6px 10px" }}>USD</th>
-                <th style={{ padding: "6px 10px" }}>Rate</th>
-                <th style={{ padding: "6px 10px" }}>PKR (net)</th>
-                <th style={{ padding: "6px 10px" }}>Ordered</th>
-                <th style={{ padding: "6px 10px" }}>Shipped</th>
-                <th style={{ padding: "6px 10px" }}>Returned</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r, i) => (
-                <tr key={r.account_id} style={{ borderBottom: "1px solid var(--hairline, #eee)" }}>
-                  <td style={{ padding: "6px 10px" }}>@{r.username}</td>
-                  <td style={{ padding: "6px 10px" }}>
-                    <span style={{ marginRight: 2 }}>$</span>
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={r.earnings_usd}
-                      onChange={(e) => setRow(i, { earnings_usd: Number(e.target.value) })}
-                      style={{ width: 84 }}
-                    />
-                  </td>
-                  <td style={{ padding: "6px 10px" }}>{r.rate}%</td>
-                  <td style={{ padding: "6px 10px" }}>Rs {netOf(r).toLocaleString()}</td>
-                  <td style={{ padding: "6px 10px" }}>
-                    <input
-                      type="number"
-                      min={0}
-                      step="1"
-                      value={r.ordered}
-                      onChange={(e) => setRow(i, { ordered: Number(e.target.value) })}
-                      style={{ width: 64 }}
-                    />
-                  </td>
-                  <td style={{ padding: "6px 10px" }}>
-                    <input
-                      type="number"
-                      min={0}
-                      step="1"
-                      value={r.shipped}
-                      onChange={(e) => setRow(i, { shipped: Number(e.target.value) })}
-                      style={{ width: 64 }}
-                    />
-                  </td>
-                  <td style={{ padding: "6px 10px" }}>
-                    <input
-                      type="number"
-                      min={0}
-                      step="1"
-                      value={r.returned}
-                      onChange={(e) => setRow(i, { returned: Number(e.target.value) })}
-                      style={{ width: 64 }}
-                    />
-                  </td>
+          <div className="table-scroll">
+            <table className="report-table">
+              <thead>
+                <tr>
+                  <th>User</th><th>USD</th><th>Rate</th><th>PKR (net)</th>
+                  <th>Ordered</th><th>Shipped</th><th>Returned</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          <button className="cell-btn" style={{ marginTop: 12 }} disabled={busy || !canConfirm} onClick={doRecord}>
-            {busy ? "Importing..." : `Confirm import for ${preview.report_date}`}
+              </thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr key={r.account_id}>
+                    <td>@{r.username}</td>
+                    <td className="report-usd">
+                      <span>$</span>
+                      <input
+                        type="number" min={0} step="0.01" value={r.earnings_usd}
+                        onChange={(e) => setRow(i, { earnings_usd: Number(e.target.value) })}
+                      />
+                    </td>
+                    <td>{r.rate}%</td>
+                    <td><strong>Rs {netOf(r).toLocaleString()}</strong></td>
+                    <td>
+                      <input
+                        type="number" min={0} step="1" value={r.ordered}
+                        onChange={(e) => setRow(i, { ordered: Number(e.target.value) })}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number" min={0} step="1" value={r.shipped}
+                        onChange={(e) => setRow(i, { shipped: Number(e.target.value) })}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number" min={0} step="1" value={r.returned}
+                        onChange={(e) => setRow(i, { returned: Number(e.target.value) })}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <button className="primary" style={{ marginTop: "var(--sp-lg)" }} disabled={busy || !canConfirm} onClick={doRecord}>
+            {busy ? "Importing…" : `Confirm — save as Report ${preview.report_seq}`}
           </button>
         </div>
       )}
