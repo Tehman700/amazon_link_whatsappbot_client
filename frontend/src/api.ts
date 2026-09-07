@@ -208,6 +208,9 @@ export const portalAdmin = {
   // auto-report-0.1 — US report earnings import.
   reportDates: () =>
     request<ReportDates>("/portal-admin/report-import/dates"),
+  reportReset: () =>
+    request<{ ok: boolean; imports_removed: number; entries_removed: number }>(
+      "/portal-admin/report-import/all", { method: "DELETE" }),
   reportPreview: (body: { report_date: string; csv_text: string }) =>
     request<ReportPreview>("/portal-admin/report-import/preview",
       { method: "POST", body: JSON.stringify(body) }),

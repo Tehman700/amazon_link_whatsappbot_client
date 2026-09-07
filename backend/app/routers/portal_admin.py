@@ -484,6 +484,14 @@ def report_import_dates():
     return _website("GET", "/api/admin/report-import/dates?marketplace=US")
 
 
+@router.delete("/report-import/all")
+def report_import_reset():
+    """Clear the US import ledger so the calendar starts fresh. Earnings balances
+    are left untouched — only the calendar/duplicate history and its order-count
+    contributions are removed."""
+    return _website("DELETE", "/api/admin/report-import/all?marketplace=US")
+
+
 class _ReportUpload(BaseModel):
     report_date: str          # the day this report's data covers (YYYY-MM-DD)
     csv_text: str             # the report file's text (the frontend reads it)

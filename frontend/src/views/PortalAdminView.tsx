@@ -2006,6 +2006,28 @@ function ReportsTab() {
     }
   };
 
+  const doReset = async () => {
+    if (!window.confirm(
+      "Clear ALL imported dates from the calendar?\n\n" +
+      "This wipes the import history (every red date goes back to blank) but " +
+      "does NOT change any earnings balances. Wiped dates become re-importable, " +
+      "so don't re-upload the same day afterwards.")) return;
+    setBusy(true);
+    setMsg("");
+    try {
+      const res = await portalAdmin.reportReset();
+      setMsg(`Calendar reset — cleared ${res.imports_removed} imported date(s). Earnings unchanged.`);
+      setPreview(null);
+      setRows([]);
+      setSelected("");
+      loadDates();
+    } catch (e) {
+      setMsg(String((e as Error)?.message ?? e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const fx = preview?.fx_rate ?? 0;
   // Mirror the website's rounding: gross = round(usd * fx), net = round(gross * rate%).
   const netOf = (r: EditRow) => Math.round((Math.round((r.earnings_usd || 0) * fx) * (r.rate || 0)) / 100);
@@ -2027,6 +2049,15 @@ function ReportsTab() {
         <div>
           <label className="muted" style={{ fontSize: 12 }}>Report date</label>
           <ImportCalendar imported={imported} selected={selected} onSelect={setSelected} />
+          <button
+            className="cell-btn"
+            style={{ marginTop: 10 }}
+            disabled={busy || dates.length === 0}
+            onClick={doReset}
+            title="Clears every imported (red) date. Earnings balances are not changed."
+          >
+            Reset calendar
+          </button>
         </div>
         <div style={{ minWidth: 240 }}>
           <div style={{ marginBottom: 12 }}>
