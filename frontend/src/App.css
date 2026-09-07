@@ -777,32 +777,44 @@ button.btn-red-solid:disabled {
   font-size: 13px;
   line-height: 1.5;
 }
-.report-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: var(--sp-sm); }
+.report-table {
+  width: auto;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-top: var(--sp-sm);
+}
 .report-table th {
   text-align: left;
+  vertical-align: middle;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--mute);
-  padding: 8px 12px;
+  padding: 8px 18px;
   border-bottom: 1px solid var(--hairline);
   white-space: nowrap;
 }
 .report-table td {
-  padding: 7px 12px;
+  vertical-align: middle;
+  padding: 9px 18px;
   border-bottom: 1px solid var(--hairline-soft);
   white-space: nowrap;
 }
+/* numeric columns read better right-aligned so digits line up */
+.report-table th:not(:first-child),
+.report-table td:not(:first-child) { text-align: right; }
 .report-table input {
   height: 32px;
   width: 74px;
   padding: 4px 10px;
   border-radius: 10px;
   font-size: 13px;
+  text-align: right;
+  vertical-align: middle;
 }
-.report-usd { display: flex; align-items: center; gap: 3px; }
-.report-usd span { color: var(--mute); }
+.report-usd { white-space: nowrap; }
+.report-usd span { color: var(--mute); margin-right: 4px; vertical-align: middle; }
 .report-usd input { width: 88px; }
 .report-tag {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
