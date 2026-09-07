@@ -427,7 +427,8 @@ function AccountsTab({
   };
 
   const editOrders = async (a: PortalAdminAccount) => {
-    const raw = prompt(`Number of orders (purchases) for @${a.username}:`, String(a.orders));
+    const note = a.report_orders > 0 ? ` (US report imports add ${a.report_orders} on top)` : "";
+    const raw = prompt(`Manual orders for @${a.username}${note}:`, String(a.orders));
     if (raw === null) return;
     const n = Number(raw);
     if (isNaN(n) || n < 0) { onError("Orders must be a number \u2265 0"); return; }
@@ -440,7 +441,8 @@ function AccountsTab({
   };
 
   const editShippedOrders = async (a: PortalAdminAccount) => {
-    const raw = prompt(`Number of shipped orders for @${a.username}:`, String(a.shipped_orders));
+    const note = a.report_shipped > 0 ? ` (US report imports add ${a.report_shipped} on top)` : "";
+    const raw = prompt(`Manual shipped orders for @${a.username}${note}:`, String(a.shipped_orders));
     if (raw === null) return;
     const n = Number(raw);
     if (isNaN(n) || n < 0) { onError("Shipped orders must be a number \u2265 0"); return; }
@@ -587,14 +589,32 @@ function AccountsTab({
                   <td>{a.views}</td>
                   <td>{a.clicks}</td>
                   <td>
-                    <button className="cell-btn" onClick={() => editOrders(a)} title="Set orders">
-                      {a.orders} ✎
+                    <button
+                      className="cell-btn"
+                      onClick={() => editOrders(a)}
+                      title="Total orders (manual + US report imports). Click to edit the manual figure."
+                    >
+                      {a.orders + a.report_orders} ✎
                     </button>
+                    {a.report_orders > 0 && (
+                      <div className="muted" style={{ fontSize: 11 }}>
+                        {a.orders} + {a.report_orders} reports
+                      </div>
+                    )}
                   </td>
                   <td>
-                    <button className="cell-btn" onClick={() => editShippedOrders(a)} title="Set shipped orders">
-                      {a.shipped_orders} ✎
+                    <button
+                      className="cell-btn"
+                      onClick={() => editShippedOrders(a)}
+                      title="Total shipped (manual + US report imports). Click to edit the manual figure."
+                    >
+                      {a.shipped_orders + a.report_shipped} ✎
                     </button>
+                    {a.report_shipped > 0 && (
+                      <div className="muted" style={{ fontSize: 11 }}>
+                        {a.shipped_orders} + {a.report_shipped} reports
+                      </div>
+                    )}
                   </td>
                   <td style={{ whiteSpace: "nowrap" }}>
                     {balanceById.has(a.id) ? (

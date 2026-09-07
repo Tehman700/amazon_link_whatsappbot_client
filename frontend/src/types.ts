@@ -65,6 +65,8 @@ export interface PortalAdminAccount {
   clicks: number;
   orders: number;
   shipped_orders: number;
+  report_orders: number;    // added by US report imports
+  report_shipped: number;
   name: string;
   link_preference: string;
   store_name: string;
