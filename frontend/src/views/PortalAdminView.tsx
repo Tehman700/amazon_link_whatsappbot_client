@@ -357,6 +357,10 @@ function LoginsTab() {
 
 /* ---------------------------------------------------------- accounts tab */
 
+/* Per-account "Clear reports" reset — hidden for now (kept for later testing).
+   Flip to true to show the button again; the endpoint stays deployed either way. */
+const SHOW_CLEAR_REPORTS = false;
+
 function AccountsTab({
   data,
   refresh,
@@ -609,13 +613,15 @@ function AccountsTab({
                     <button className="cell-btn" onClick={() => toggleDisabled(a)}>
                       {a.disabled ? "Enable" : "Disable"}
                     </button>
-                    <button
-                      className="cell-btn"
-                      onClick={() => resetReports(a)}
-                      title="Clear this account's auto-report order/shipped counts (earnings untouched)"
-                    >
-                      Clear reports
-                    </button>
+                    {SHOW_CLEAR_REPORTS && (
+                      <button
+                        className="cell-btn"
+                        onClick={() => resetReports(a)}
+                        title="Clear this account's auto-report order/shipped counts (earnings untouched)"
+                      >
+                        Clear reports
+                      </button>
+                    )}
                     <button className="danger" onClick={() => del(a)}>
                       Delete
                     </button>
