@@ -80,6 +80,8 @@ check("a tag with no portal user is unmatched",
 check("rows parsed excludes header + others (4 rows)", built["rows_parsed"] == 4, built["rows_parsed"])
 check("the shared tag is NOT in entries (never auto-assigned)",
       all(e["account_id"] not in (3, 4) for e in built["entries"]))
+check("tag_by_account maps matched accounts to their US tracking id",
+      built["tag_by_account"] == {1: "aliceus-20", 2: "bobus-20"}, built["tag_by_account"])
 
 print(f"\n{passed} passed, {failed} failed")
 raise SystemExit(1 if failed else 0)

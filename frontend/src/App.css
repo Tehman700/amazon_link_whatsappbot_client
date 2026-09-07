@@ -804,3 +804,9 @@ button.btn-red-solid:disabled {
 .report-usd { display: flex; align-items: center; gap: 3px; }
 .report-usd span { color: var(--mute); }
 .report-usd input { width: 88px; }
+.report-tag {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: var(--mute);
+  margin-top: 2px;
+}

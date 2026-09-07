@@ -208,6 +208,7 @@ export interface LoginsData {
 export interface ReportPreviewUser {
   account_id: number;
   username: string;
+  tracking_id: string;
   earnings_usd: number;
   rate: number;
   gross_pkr: number;

@@ -1913,6 +1913,7 @@ function ImportCalendar({
 type EditRow = {
   account_id: number;
   username: string;
+  tracking_id: string;
   earnings_usd: number;
   rate: number;
   ordered: number;
@@ -1970,6 +1971,7 @@ function ReportsTab() {
       setRows(pv.users.map((u) => ({
         account_id: u.account_id,
         username: u.username,
+        tracking_id: u.tracking_id,
         earnings_usd: u.earnings_usd,
         rate: u.rate,
         ordered: u.ordered,
@@ -2122,7 +2124,10 @@ function ReportsTab() {
               <tbody>
                 {rows.map((r, i) => (
                   <tr key={r.account_id}>
-                    <td>@{r.username}</td>
+                    <td>
+                      @{r.username}
+                      {r.tracking_id && <div className="report-tag">{r.tracking_id}</div>}
+                    </td>
                     <td className="report-usd">
                       <span>$</span>
                       <input

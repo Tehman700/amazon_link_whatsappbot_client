@@ -468,6 +468,9 @@ def _build_entries(db: Session, csv_text: str) -> dict:
     ]
     return {
         "entries": entries,
+        # account_id -> its US tracking id, so the preview can show which
+        # affiliate tag each matched user came from.
+        "tag_by_account": {acc: r.tag for r, acc in mr.matched},
         "duplicate_tags": [
             {"tag": tag, "account_ids": accs,
              "usernames": [username_by_id.get(a, "") for a in accs]}
@@ -505,6 +508,10 @@ def report_import_preview(body: _ReportUpload, db: Session = Depends(get_db)):
         "marketplace": "US", "report_date": body.report_date,
         "entries": built["entries"],
     })
+    # Attach each matched user's US tracking id (bot owns tracking IDs).
+    tag_by_account = built["tag_by_account"]
+    for u in pv.get("users", []):
+        u["tracking_id"] = tag_by_account.get(u["account_id"], "")
     pv.update({k: built[k] for k in ("duplicate_tags", "unmatched_tags", "rows_parsed")})
     return pv
 
