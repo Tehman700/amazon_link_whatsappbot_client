@@ -357,9 +357,9 @@ function LoginsTab() {
 
 /* ---------------------------------------------------------- accounts tab */
 
-/* Per-account "Clear reports" reset — temporarily shown for test resets.
-   Flip to false to hide the button again; the endpoint stays deployed either way. */
-const SHOW_CLEAR_REPORTS = true;
+/* Per-account "Clear reports" reset — hidden (kept for later testing).
+   Flip to true to show the button again; the endpoint stays deployed either way. */
+const SHOW_CLEAR_REPORTS = false;
 
 function AccountsTab({
   data,
