@@ -303,6 +303,13 @@ def reset_password(account_id: int):
     return _website("POST", f"/api/admin/accounts/{account_id}/reset-password")
 
 
+@router.post("/accounts/{account_id}/reset-reports")
+def reset_reports(account_id: int):
+    """Clear this account's auto-report contributions so its report-derived
+    order/shipped counts fall back to the manual figure. Earnings untouched."""
+    return _website("POST", f"/api/admin/accounts/{account_id}/reset-reports")
+
+
 @router.post("/accounts/{account_id}/disabled")
 async def set_disabled(account_id: int, request: Request):
     body = await request.json()

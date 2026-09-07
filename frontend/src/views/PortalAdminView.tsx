@@ -463,6 +463,21 @@ function AccountsTab({
     }
   };
 
+  const resetReports = async (a: PortalAdminAccount) => {
+    if (
+      !confirm(
+        `Clear @${a.username}'s auto-report order/shipped counts?\n\nThis removes only what US report imports ADDED for this user. Earnings and the manual order counts are not changed. Useful to reset a test account.`,
+      )
+    )
+      return;
+    try {
+      await portalAdmin.resetReports(a.id);
+      refresh();
+    } catch (e) {
+      onError((e as Error).message);
+    }
+  };
+
   if (detail) {
     return (
       <AccountDetail
@@ -593,6 +608,13 @@ function AccountsTab({
                     </button>
                     <button className="cell-btn" onClick={() => toggleDisabled(a)}>
                       {a.disabled ? "Enable" : "Disable"}
+                    </button>
+                    <button
+                      className="cell-btn"
+                      onClick={() => resetReports(a)}
+                      title="Clear this account's auto-report order/shipped counts (earnings untouched)"
+                    >
+                      Clear reports
                     </button>
                     <button className="danger" onClick={() => del(a)}>
                       Delete

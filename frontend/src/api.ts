@@ -149,6 +149,9 @@ export const portalAdmin = {
     }),
   deleteAccount: (id: number) =>
     request<{ ok: boolean }>(`/portal-admin/accounts/${id}`, { method: "DELETE" }),
+  resetReports: (id: number) =>
+    request<{ ok: boolean; username: string; report_entries_removed: number }>(
+      `/portal-admin/accounts/${id}/reset-reports`, { method: "POST" }),
   setOrders: (id: number, orders: number) =>
     request<{ orders: number }>(`/portal-admin/accounts/${id}/orders`, {
       method: "POST", body: JSON.stringify({ orders }),
