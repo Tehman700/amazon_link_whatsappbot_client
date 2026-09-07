@@ -501,18 +501,31 @@ def report_import_preview(body: _ReportUpload, db: Session = Depends(get_db)):
     return pv
 
 
+class _ReportEntry(BaseModel):
+    account_id: int
+    earnings_usd_cents: int = 0
+    ordered: int = 0
+    shipped: int = 0
+    returned: int = 0
+
+
+class _ReportRecordBody(BaseModel):
+    report_date: str
+    entries: list[_ReportEntry] = []
+
+
 @router.post("/report-import/record")
-def report_import_record(body: _ReportUpload, db: Session = Depends(get_db)):
-    built = _build_entries(db, body.csv_text)
-    if built["duplicate_tags"]:
-        raise HTTPException(
-            409,
-            "Duplicate US tracking IDs among portal users — resolve these before "
-            "importing: " + ", ".join(d["tag"] for d in built["duplicate_tags"]),
-        )
+def report_import_record(body: _ReportRecordBody):
+    # Entries come from the (possibly admin-edited) preview, not a fresh parse,
+    # so the admin's corrections are exactly what gets published. Duplicate tags
+    # were already excluded/blocked at preview time.
     return _website("POST", "/api/admin/report-import/record", {
         "marketplace": "US", "report_date": body.report_date,
-        "entries": built["entries"],
+        "entries": [
+            {"account_id": e.account_id, "earnings_usd_cents": e.earnings_usd_cents,
+             "ordered": e.ordered, "shipped": e.shipped, "returned": e.returned}
+            for e in body.entries
+        ],
     })
 
 

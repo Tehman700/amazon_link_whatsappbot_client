@@ -211,7 +211,16 @@ export const portalAdmin = {
   reportPreview: (body: { report_date: string; csv_text: string }) =>
     request<ReportPreview>("/portal-admin/report-import/preview",
       { method: "POST", body: JSON.stringify(body) }),
-  reportRecord: (body: { report_date: string; csv_text: string }) =>
+  reportRecord: (body: {
+    report_date: string;
+    entries: {
+      account_id: number;
+      earnings_usd_cents: number;
+      ordered: number;
+      shipped: number;
+      returned: number;
+    }[];
+  }) =>
     request<ReportRecordResult>("/portal-admin/report-import/record",
       { method: "POST", body: JSON.stringify(body) }),
   reportRate: () =>

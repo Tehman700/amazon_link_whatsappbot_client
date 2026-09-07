@@ -1906,6 +1906,16 @@ function ImportCalendar({
   );
 }
 
+type EditRow = {
+  account_id: number;
+  username: string;
+  earnings_usd: number;
+  rate: number;
+  ordered: number;
+  shipped: number;
+  returned: number;
+};
+
 function ReportsTab() {
   const [dates, setDates] = useState<string[]>([]);
   const [selected, setSelected] = useState("");
@@ -1913,6 +1923,7 @@ function ReportsTab() {
   const [csvText, setCsvText] = useState("");
   const [fileName, setFileName] = useState("");
   const [preview, setPreview] = useState<ReportPreview | null>(null);
+  const [rows, setRows] = useState<EditRow[]>([]);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -1943,12 +1954,25 @@ function ReportsTab() {
   const doPreview = async () => {
     setMsg("");
     setPreview(null);
+    setRows([]);
     if (!selected) return setMsg("Pick the report date on the calendar.");
     if (!csvText) return setMsg("Choose the US report CSV file.");
     if (!rate || rate <= 0) return setMsg("Set the US exchange rate first in the US Rate tab.");
     setBusy(true);
     try {
-      setPreview(await portalAdmin.reportPreview({ report_date: selected, csv_text: csvText }));
+      const pv = await portalAdmin.reportPreview({ report_date: selected, csv_text: csvText });
+      setPreview(pv);
+      // Seed the editable table from the parsed numbers. The admin can correct any
+      // of these before publishing; the rate column stays read-only.
+      setRows(pv.users.map((u) => ({
+        account_id: u.account_id,
+        username: u.username,
+        earnings_usd: u.earnings_usd,
+        rate: u.rate,
+        ordered: u.ordered,
+        shipped: u.shipped,
+        returned: u.returned,
+      })));
     } catch (e) {
       setMsg(String((e as Error)?.message ?? e));
     } finally {
@@ -1960,9 +1984,18 @@ function ReportsTab() {
     setBusy(true);
     setMsg("");
     try {
-      const res = await portalAdmin.reportRecord({ report_date: selected, csv_text: csvText });
+      // Publish exactly what is in the (possibly edited) table, not a re-parse.
+      const entries = rows.map((r) => ({
+        account_id: r.account_id,
+        earnings_usd_cents: Math.round((r.earnings_usd || 0) * 100),
+        ordered: Math.round(r.ordered || 0),
+        shipped: Math.round(r.shipped || 0),
+        returned: Math.round(r.returned || 0),
+      }));
+      const res = await portalAdmin.reportRecord({ report_date: selected, entries });
       setMsg(`Imported ${res.earnings_entries_created} earning(s) for ${selected}.`);
       setPreview(null);
+      setRows([]);
       setCsvText("");
       setFileName("");
       loadDates();
@@ -1972,6 +2005,13 @@ function ReportsTab() {
       setBusy(false);
     }
   };
+
+  const fx = preview?.fx_rate ?? 0;
+  // Mirror the website's rounding: gross = round(usd * fx), net = round(gross * rate%).
+  const netOf = (r: EditRow) => Math.round((Math.round((r.earnings_usd || 0) * fx) * (r.rate || 0)) / 100);
+  const totalNet = rows.reduce((sum, r) => sum + netOf(r), 0);
+  const setRow = (i: number, patch: Partial<EditRow>) =>
+    setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
 
   const dupes = preview?.duplicate_tags ?? [];
   const canConfirm = Boolean(preview && !preview.already_imported && dupes.length === 0);
@@ -2039,9 +2079,13 @@ function ReportsTab() {
             </div>
           )}
           <p className="muted" style={{ fontSize: 13 }}>
-            {preview.rows_parsed} report rows &middot; {preview.user_count} matched portal users &middot;{" "}
+            {preview.rows_parsed} report rows &middot; {rows.length} matched portal users &middot;{" "}
             {preview.unmatched_tags.length} unmatched tags &middot; total to add:{" "}
-            <strong>Rs {preview.total_net_pkr.toLocaleString()}</strong>
+            <strong>Rs {totalNet.toLocaleString()}</strong>
+          </p>
+          <p className="muted" style={{ fontSize: 12, marginTop: -4 }}>
+            All fields except Rate are editable &mdash; correct any value before confirming and the edited
+            numbers are what gets published.
           </p>
           <table style={{ borderCollapse: "collapse", width: "100%", marginTop: 8, fontSize: 13 }}>
             <thead>
@@ -2056,15 +2100,52 @@ function ReportsTab() {
               </tr>
             </thead>
             <tbody>
-              {preview.users.map((u) => (
-                <tr key={u.account_id} style={{ borderBottom: "1px solid var(--hairline, #eee)" }}>
-                  <td style={{ padding: "6px 10px" }}>@{u.username}</td>
-                  <td style={{ padding: "6px 10px" }}>${u.earnings_usd.toFixed(2)}</td>
-                  <td style={{ padding: "6px 10px" }}>{u.rate}%</td>
-                  <td style={{ padding: "6px 10px" }}>Rs {u.net_pkr.toLocaleString()}</td>
-                  <td style={{ padding: "6px 10px" }}>{u.ordered}</td>
-                  <td style={{ padding: "6px 10px" }}>{u.shipped}</td>
-                  <td style={{ padding: "6px 10px" }}>{u.returned}</td>
+              {rows.map((r, i) => (
+                <tr key={r.account_id} style={{ borderBottom: "1px solid var(--hairline, #eee)" }}>
+                  <td style={{ padding: "6px 10px" }}>@{r.username}</td>
+                  <td style={{ padding: "6px 10px" }}>
+                    <span style={{ marginRight: 2 }}>$</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={r.earnings_usd}
+                      onChange={(e) => setRow(i, { earnings_usd: Number(e.target.value) })}
+                      style={{ width: 84 }}
+                    />
+                  </td>
+                  <td style={{ padding: "6px 10px" }}>{r.rate}%</td>
+                  <td style={{ padding: "6px 10px" }}>Rs {netOf(r).toLocaleString()}</td>
+                  <td style={{ padding: "6px 10px" }}>
+                    <input
+                      type="number"
+                      min={0}
+                      step="1"
+                      value={r.ordered}
+                      onChange={(e) => setRow(i, { ordered: Number(e.target.value) })}
+                      style={{ width: 64 }}
+                    />
+                  </td>
+                  <td style={{ padding: "6px 10px" }}>
+                    <input
+                      type="number"
+                      min={0}
+                      step="1"
+                      value={r.shipped}
+                      onChange={(e) => setRow(i, { shipped: Number(e.target.value) })}
+                      style={{ width: 64 }}
+                    />
+                  </td>
+                  <td style={{ padding: "6px 10px" }}>
+                    <input
+                      type="number"
+                      min={0}
+                      step="1"
+                      value={r.returned}
+                      onChange={(e) => setRow(i, { returned: Number(e.target.value) })}
+                      style={{ width: 64 }}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>
