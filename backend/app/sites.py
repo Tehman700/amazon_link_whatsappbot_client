@@ -17,7 +17,6 @@ ARTICLE_SITES: list[tuple[str, str]] = [
     ("beastfinds", "Beast Finds — beastfinds.com"),
     ("beastscart", "Beast Cart — beastscart.com"),
     ("beastsdeal", "Beast Deals — beastsdeal.com"),
-    ("qualitypick", "Quality Pick — affiliate.qualitypick.net"),
 ]
 
 SITE_KEYS = {key for key, _ in ARTICLE_SITES}
