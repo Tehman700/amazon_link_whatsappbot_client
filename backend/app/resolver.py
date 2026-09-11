@@ -202,12 +202,15 @@ async def _site_specific(
             if location and match_marketplace(_host(location), domain_map):
                 return location
 
-    # reviewstrident.com — see JINA_READER_BASE above. Rendered through Jina
-    # Reader (with its links summary so the "Buy Now" button's href is included),
-    # then scanned for the marketplace link the normal fetch can never reach.
-    # This host only; every other site keeps the plain fetch+scan behaviour.
+    # reviewstrident.com and qualitypick.net — WAF-gated funnel pages that 403
+    # any plain HTTP client (curl/httpx, even browser-impersonating ones), so the
+    # normal fetch+scan never reaches their "View on Amazon" button. Rendered
+    # through Jina Reader (with its links summary so the button's href is
+    # included), then scanned for the marketplace link. These hosts only; every
+    # other site keeps the plain fetch+scan behaviour.
     if JINA_READER_BASE and (
         host == "reviewstrident.com" or host.endswith(".reviewstrident.com")
+        or host == "qualitypick.net" or host.endswith(".qualitypick.net")
     ):
         rendered = await _render_via_jina(url)
         for candidate in URL_IN_HTML_RE.findall(html.unescape(rendered)):
